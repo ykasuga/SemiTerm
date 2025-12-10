@@ -91,26 +91,26 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="title" className="text-right">接続名</Label>
-            <Input id="title" name="title" value={formData.title} onChange={handleChange} className="col-span-3 bg-gray-800 border-gray-600" />
+          <div className="grid w-full items-center gap-1.5">
+            <Label htmlFor="title">接続名</Label>
+            <Input id="title" name="title" value={formData.title} onChange={handleChange} className="bg-gray-800 border-gray-600" />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="host" className="text-right">Host</Label>
-            <Input id="host" name="host" value={formData.host} onChange={handleChange} className="col-span-3 bg-gray-800 border-gray-600" />
+          <div className="grid w-full items-center gap-1.5">
+            <Label htmlFor="host">Host</Label>
+            <Input id="host" name="host" value={formData.host} onChange={handleChange} className="bg-gray-800 border-gray-600" />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="port" className="text-right">Port</Label>
-            <Input id="port" name="port" type="number" value={formData.port} onChange={handleChange} className="col-span-3 bg-gray-800 border-gray-600" />
+          <div className="grid w-full items-center gap-1.5">
+            <Label htmlFor="port">Port</Label>
+            <Input id="port" name="port" type="number" value={formData.port} onChange={handleChange} className="bg-gray-800 border-gray-600" />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="username" className="text-right">Username</Label>
-            <Input id="username" name="username" value={formData.username} onChange={handleChange} className="col-span-3 bg-gray-800 border-gray-600" />
+          <div className="grid w-full items-center gap-1.5">
+            <Label htmlFor="username">Username</Label>
+            <Input id="username" name="username" value={formData.username} onChange={handleChange} className="bg-gray-800 border-gray-600" />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label className="text-right">認証方式</Label>
+          <div className="grid w-full items-center gap-1.5">
+            <Label>認証方式</Label>
             <Select onValueChange={handleAuthTypeChange} defaultValue={formData.auth.type}>
-              <SelectTrigger className="col-span-3 bg-gray-800 border-gray-600">
+              <SelectTrigger className="bg-gray-800 border-gray-600">
                 <SelectValue placeholder="認証方式を選択" />
               </SelectTrigger>
               <SelectContent className="bg-gray-800 text-white border-gray-600">
@@ -120,17 +120,17 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
             </Select>
           </div>
           {formData.auth.type === 'password' ? (
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="password" className="text-right">Password</Label>
-              <Input id="password" name="password" type="password" value={formData.auth.password || ''} onChange={handleAuthChange} className="col-span-3 bg-gray-800 border-gray-600" />
+            <div className="grid w-full items-center gap-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" name="password" type="password" value={formData.auth.password || ''} onChange={handleAuthChange} className="bg-gray-800 border-gray-600" />
             </div>
           ) : (
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="keyPath" className="text-right">Key Path</Label>
-              <Input id="keyPath" name="keyPath" value={formData.auth.keyPath || ''} onChange={handleAuthChange} className="col-span-3 bg-gray-800 border-gray-600" />
+            <div className="grid w-full items-center gap-1.5">
+              <Label htmlFor="keyPath">Key Path</Label>
+              <Input id="keyPath" name="keyPath" value={formData.auth.keyPath || ''} onChange={handleAuthChange} className="bg-gray-800 border-gray-600" />
             </div>
           )}
-           <p className="text-xs text-gray-500 col-start-2 col-span-3">パスワードは保存されません（毎回入力が必要です）。</p>
+           <p className="text-xs text-gray-500 pt-2">パスワードは保存されません（毎回入力が必要です）。</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
