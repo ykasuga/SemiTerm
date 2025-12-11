@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Button } from "@renderer/components/ui/button";
-import { Menu, Plus, Server, Trash2, Pencil } from "lucide-react";
+import { Plus, Server, Trash2, Pencil } from "lucide-react";
 import { Connection } from "./globals";
 import ConnectionEditor from "./ConnectionEditor";
 
