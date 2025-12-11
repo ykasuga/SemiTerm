@@ -3,7 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
-import { Connection } from '../renderer/src/globals'
+import type { Connection } from '../renderer/src/types'
 import { v4 as uuidv4 } from 'uuid'
 
 

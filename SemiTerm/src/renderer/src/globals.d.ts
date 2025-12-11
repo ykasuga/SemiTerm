@@ -1,25 +1,15 @@
-// globals.d.ts
-export {};
-
-// From design doc: 5. 接続情報フォーマット（JSON）
-export interface Connection {
-  id: string;
-  title: string;
-  host: string;
-  port: number;
-  username: string;
-  auth: {
-    type: 'password' | 'key';
-    password?: string;
-    keyPath?: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
+import type { IpcRendererEvent } from 'electron';
+import type { Connection } from './types';
 
 declare global {
   interface Window {
-    // Expose some Api to the Renderer process
+    electron: {
+      ipcRenderer: {
+        send(channel: string, ...args: unknown[]): void;
+        on(channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void): void;
+        removeAllListeners(channel: string): void;
+      };
+    };
     api: {
       // From Main to Renderer
       onSshData: (callback: (id: string, data: Uint8Array) => void) => void;

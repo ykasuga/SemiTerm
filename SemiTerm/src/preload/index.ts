@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { Connection } from '../renderer/src/globals'
+import type { Connection } from '../renderer/src/types'
 
 // Custom APIs for renderer
 const api = {

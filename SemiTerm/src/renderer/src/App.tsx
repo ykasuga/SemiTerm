@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Button } from "@renderer/components/ui/button";
 import { Plus, Server, Trash2, Pencil } from "lucide-react";
-import { Connection } from "./globals";
+import { Connection } from "./types";
 import ConnectionEditor from "./ConnectionEditor";
+import TerminalComponent from "./Terminal";
 
 // Sidebar item
 function ConnectionItem({ connection, onConnect, onEdit, onDelete }: { connection: Connection, onConnect: (c: Connection) => void, onEdit: (c: Connection) => void, onDelete: (id: string) => void }) {
@@ -71,7 +72,7 @@ export default function App() {
       setActiveTab(newTabId);
       return;
     }
-    const newTab = { id: newTabId, label: `${tabs.length} - ${connection.title}` };
+    const newTab = { id: newTabId, label: `${tabs.length} - ${connection.host}` };
     setTabs([...tabs, newTab]);
     setActiveTab(newTabId);
     window.api.sshConnect(connection);
@@ -104,10 +105,8 @@ export default function App() {
       </div>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         <div className="h-12 bg-[#1e293b] border-b border-gray-700 flex items-center px-4">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 h-full">
             <TabsList className="bg-transparent h-full p-0">
               {tabs.map((tab) => (
                 <TabsTrigger
@@ -119,27 +118,24 @@ export default function App() {
                 </TabsTrigger>
               ))}
             </TabsList>
-
-            {/* This part will be refactored to hold the terminal */}
-            <div className="h-[calc(100vh-3rem)] bg-[#0f172a]">
-              {tabs.map((tab) => (
-                <TabsContent key={tab.id} value={tab.id} className="h-full p-0">
-                  {tab.id === "welcome" ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-300">
-                      <div className="text-5xl mb-4">&gt;_</div>
-                      <div className="text-xl mb-6">SemiTerm 軽量 SSH ターミナル</div>
-                      <Button onClick={openNewConnectionEditor}>新しい接続を作成</Button>
-                    </div>
-                  ) : (
-                    <div className="p-4 text-gray-400 h-full">SSHターミナル (ID: {tab.id})</div>
-                  )}
-                </TabsContent>
-              ))}
-            </div>
-          </Tabs>
         </div>
-      </div>
-      {/* We will add the ConnectionEditor modal here */}
+
+        <div className="flex-1 bg-[#0f172a] overflow-y-hidden">
+          {tabs.map((tab) => (
+            <TabsContent key={tab.id} value={tab.id} className="h-full p-0 m-0">
+              {tab.id === "welcome" ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-300">
+                  <div className="text-5xl mb-4">&gt;_</div>
+                  <div className="text-xl mb-6">SemiTerm 軽量 SSH ターミナル</div>
+                  <Button onClick={openNewConnectionEditor}>新しい接続を作成</Button>
+                </div>
+              ) : (
+                <TerminalComponent connectionId={tab.id} isActive={activeTab === tab.id} />
+              )}
+            </TabsContent>
+          ))}
+        </div>
+      </Tabs>
       {isEditorOpen && <ConnectionEditor connection={editingConnection} onSave={handleSaveConnection} onCancel={() => setEditorOpen(false)} />}
     </div>
   );

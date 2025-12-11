@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Connection } from './globals';
+import { Connection } from './types';
 import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
