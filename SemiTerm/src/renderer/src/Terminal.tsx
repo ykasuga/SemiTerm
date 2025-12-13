@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css'
 interface TerminalProps {
   connectionId: string
   isActive: boolean
+  resetToken?: number
 }
 
 const getTheme = (isDarkMode: boolean): ITerminalOptions['theme'] => {
@@ -25,7 +26,7 @@ const getTheme = (isDarkMode: boolean): ITerminalOptions['theme'] => {
   }
 }
 
-const TerminalComponent: React.FC<TerminalProps> = ({ connectionId, isActive }) => {
+const TerminalComponent: React.FC<TerminalProps> = ({ connectionId, isActive, resetToken }) => {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermInstanceRef = useRef<{ term: Terminal; fitAddon: FitAddon } | null>(null)
 
@@ -90,6 +91,12 @@ const TerminalComponent: React.FC<TerminalProps> = ({ connectionId, isActive }) 
       }, 100)
     }
   }, [isActive])
+
+  useEffect(() => {
+    if (xtermInstanceRef.current && resetToken !== undefined) {
+      xtermInstanceRef.current.term.reset()
+    }
+  }, [resetToken])
 
   return <div ref={terminalRef} style={{ width: '100%', height: '100%' }} />
 }

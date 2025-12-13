@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -51,12 +51,33 @@ export default function App() {
   const [tabStatuses, setTabStatuses] = useState<Record<string, { state: "connecting" | "connected" | "error" | "disconnected"; host?: string; username?: string; errorMessage?: string }>>({
     welcome: { state: "disconnected" }
   });
+  const [tabSessionTokens, setTabSessionTokens] = useState<Record<string, number>>({});
   const tabSerialRef = useRef(0);
 
   const createTabId = () => {
     tabSerialRef.current += 1;
     return `ssh-tab-${tabSerialRef.current}`;
   };
+
+  const startSshSession = useCallback((connection: Connection, tabId: string) => {
+    setTabConnections((prev) => ({
+      ...prev,
+      [tabId]: connection
+    }));
+    setTabStatuses((prev) => ({
+      ...prev,
+      [tabId]: {
+        state: "connecting",
+        host: connection.host,
+        username: connection.username
+      }
+    }));
+    setTabSessionTokens((prev) => ({
+      ...prev,
+      [tabId]: (prev[tabId] ?? 0) + 1
+    }));
+    window.api.sshConnect(connection, tabId);
+  }, []);
 
   useEffect(() => {
     window.api.getConnections().then(setConnections);
@@ -128,50 +149,38 @@ export default function App() {
     }
   };
 
-  const openNewConnectionEditor = () => {
+  const openNewConnectionEditor = useCallback(() => {
     setEditingConnection(null);
     setEditorOpen(true);
-  };
+  }, []);
   
   const openEditConnectionEditor = (connection: Connection) => {
     setEditingConnection(connection);
     setEditorOpen(true);
   };
 
-  const openSshTab = (connection: Connection, tabId?: string) => {
-    const newTabId = tabId || createTabId();
+  const openSshTab = useCallback((connection: Connection, tabId?: string) => {
+    const resolvedTabId = tabId || createTabId();
     setTabs((prevTabs) => {
-      if (prevTabs.find(tab => tab.id === newTabId)) {
+      if (prevTabs.find(tab => tab.id === resolvedTabId)) {
         return prevTabs;
       }
       const newTabIndex = prevTabs.length;
-      const newTab = { id: newTabId, label: `${newTabIndex} - ${connection.host}` };
+      const newTab = { id: resolvedTabId, label: `${newTabIndex} - ${connection.host}` };
       return [...prevTabs, newTab];
     });
-    setActiveTab(newTabId);
-    setTabConnections((prev) => ({
-      ...prev,
-      [newTabId]: connection
-    }));
-    setTabStatuses((prev) => ({
-      ...prev,
-      [newTabId]: {
-        state: "connecting",
-        host: connection.host,
-        username: connection.username
-      }
-    }));
-    window.api.sshConnect(connection, newTabId);
-  };
+    setActiveTab(resolvedTabId);
+    startSshSession(connection, resolvedTabId);
+  }, [startSshSession]);
 
-  const handleConnectRequest = (connection: Connection) => {
+  const handleConnectRequest = useCallback((connection: Connection) => {
     if (connection.auth.type === "password" && !connection.auth.password) {
       setPendingConnection(connection);
       setPasswordInput("");
       return;
     }
     openSshTab(connection);
-  };
+  }, [openSshTab]);
 
   const closePasswordPrompt = () => {
     setPendingConnection(null);
@@ -189,7 +198,7 @@ export default function App() {
     openSshTab(updatedConnection);
   };
 
-  const closeTab = (tabId: string) => {
+  const closeTab = useCallback((tabId: string) => {
     if (tabId === "welcome") return;
     setTabs((prevTabs) => {
       const tabIndex = prevTabs.findIndex(tab => tab.id === tabId);
@@ -209,21 +218,61 @@ export default function App() {
       const { [tabId]: _removed, ...rest } = prev;
       return rest;
     });
+    setTabSessionTokens((prev) => {
+      const { [tabId]: _removed, ...rest } = prev;
+      return rest;
+    });
     window.api.sshClose(tabId);
-  };
+  }, [activeTab]);
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "w") {
+      const isModifierPressed = event.metaKey || event.ctrlKey;
+      if (!isModifierPressed) return;
+
+      if (event.key === "Tab") {
         event.preventDefault();
+        event.stopPropagation();
+        if (!tabs.length) return;
+        const currentIndex = tabs.findIndex(tab => tab.id === activeTab);
+        const safeIndex = currentIndex === -1 ? 0 : currentIndex;
+        const direction = event.shiftKey ? -1 : 1;
+        const nextIndex = (safeIndex + direction + tabs.length) % tabs.length;
+        setActiveTab(tabs[nextIndex].id);
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+
+      if (key === "w") {
+        event.preventDefault();
+        event.stopPropagation();
         closeTab(activeTab);
+        return;
+      }
+
+      if (key === "t") {
+        event.preventDefault();
+        event.stopPropagation();
+        openNewConnectionEditor();
+        return;
+      }
+
+      if (key === "r") {
+        if (activeTab === "welcome") return;
+        const connection = tabConnections[activeTab];
+        if (connection) {
+          event.preventDefault();
+          event.stopPropagation();
+          startSshSession(connection, activeTab);
+        }
       }
     };
-    window.addEventListener("keydown", handleKeydown);
+    window.addEventListener("keydown", handleKeydown, true);
     return () => {
-      window.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("keydown", handleKeydown, true);
     };
-  }, [activeTab, tabs]);
+  }, [activeTab, tabs, tabConnections, closeTab, openNewConnectionEditor, startSshSession]);
 
   const activeStatus = useMemo(() => tabStatuses[activeTab], [tabStatuses, activeTab]);
 
@@ -318,7 +367,11 @@ export default function App() {
                     </div>
                   </div>
                 ) : (
-                  <TerminalComponent connectionId={tab.id} isActive={activeTab === tab.id} />
+                  <TerminalComponent
+                    connectionId={tab.id}
+                    isActive={activeTab === tab.id}
+                    resetToken={tabSessionTokens[tab.id] ?? 0}
+                  />
                 )}
               </div>
             </TabsContent>
