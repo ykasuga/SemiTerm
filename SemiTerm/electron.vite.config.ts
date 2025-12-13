@@ -6,7 +6,7 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        external: ['@electron-toolkit/utils']
+        external: ['@electron-toolkit/utils', 'ssh2']
       }
     }
   },
