@@ -122,7 +122,7 @@ export default function App() {
 
         <div className="flex-1 bg-[#0f172a] overflow-y-hidden">
           {tabs.map((tab) => (
-            <TabsContent key={tab.id} value={tab.id} className="h-full p-0 m-0">
+            <TabsContent key={tab.id} value={tab.id} className="h-full p-0 m-0" forceMount>
               {tab.id === "welcome" ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-300">
                   <div className="text-5xl mb-4">&gt;_</div>
