@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
-import { Plus, Server, Trash2, Pencil } from "lucide-react";
+import { Plus, Server, Trash2, Pencil, X } from "lucide-react";
 import { Connection } from "./types";
 import ConnectionEditor from "./ConnectionEditor";
 import TerminalComponent from "./Terminal";
@@ -90,13 +90,13 @@ export default function App() {
 
   const openSshTab = (connection: Connection, tabId?: string) => {
     const newTabId = tabId || `ssh-${connection.id}`;
-    // Avoid opening duplicate tabs
     if (tabs.find(tab => tab.id === newTabId)) {
       setActiveTab(newTabId);
       return;
     }
-    const newTab = { id: newTabId, label: `${tabs.length} - ${connection.host}` };
-    setTabs([...tabs, newTab]);
+    const newTabIndex = tabs.length;
+    const newTab = { id: newTabId, label: `${newTabIndex} - ${connection.host}` };
+    setTabs((prevTabs) => [...prevTabs, newTab]);
     setActiveTab(newTabId);
     window.api.sshConnect(connection, newTabId);
   };
@@ -130,6 +130,34 @@ export default function App() {
     closePasswordPrompt();
     openSshTab(updatedConnection, `ssh-${updatedConnection.id}`);
   };
+
+  const closeTab = (tabId: string) => {
+    if (tabId === "welcome") return;
+    setTabs((prevTabs) => {
+      const tabIndex = prevTabs.findIndex(tab => tab.id === tabId);
+      if (tabIndex === -1) return prevTabs;
+      const newTabs = prevTabs.filter(tab => tab.id !== tabId);
+      if (activeTab === tabId) {
+        const fallbackTab = newTabs[tabIndex - 1 >= 0 ? tabIndex - 1 : 0];
+        setActiveTab(fallbackTab ? fallbackTab.id : "welcome");
+      }
+      return newTabs;
+    });
+    window.api.sshClose(tabId);
+  };
+
+  useEffect(() => {
+    const handleKeydown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "w") {
+        event.preventDefault();
+        closeTab(activeTab);
+      }
+    };
+    window.addEventListener("keydown", handleKeydown);
+    return () => {
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, [activeTab, tabs]);
 
   return (
     <div className="flex w-screen h-screen bg-[#0f172a] text-white">
@@ -167,7 +195,19 @@ export default function App() {
                   value={tab.id}
                   className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700"
                 >
-                  {tab.label}
+                  <span className="mr-2">{tab.label}</span>
+                  {tab.id !== "welcome" && (
+                    <button
+                      className="flex items-center justify-center w-4 h-4 rounded-full hover:bg-gray-600"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(tab.id);
+                      }}
+                      aria-label="タブを閉じる"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </TabsTrigger>
               ))}
             </TabsList>
