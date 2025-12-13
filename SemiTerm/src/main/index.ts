@@ -145,26 +145,41 @@ app.whenReady().then(() => {
   });
 
   // DB Handlers
+  const sanitizeConnection = (connection: Connection): Connection => {
+    const sanitizedAuth =
+      connection.auth.type === 'password'
+        ? { type: 'password' as const }
+        : { type: 'key' as const, keyPath: connection.auth.keyPath }
+    return {
+      ...connection,
+      auth: sanitizedAuth
+    }
+  }
+
   ipcMain.handle('db:get-connections', () => {
-    return store.get('connections', []);
+    const connections = store.get('connections', [])
+    const sanitized = connections.map((conn) => sanitizeConnection(conn))
+    store.set('connections', sanitized)
+    return sanitized
   });
 
   ipcMain.handle('db:save-connection', (_event, connection: Connection) => {
     const connections = store.get('connections', []);
     const now = new Date().toISOString();
+    const sanitizedIncoming = sanitizeConnection(connection)
     if (connection.id) {
       // Update existing
       const index = connections.findIndex(c => c.id === connection.id);
       if (index !== -1) {
-        connections[index] = { ...connections[index], ...connection, updatedAt: now };
+        connections[index] = { ...connections[index], ...sanitizedIncoming, updatedAt: now };
       }
     } else {
       // Create new
-      const newConnection = { ...connection, id: uuidv4(), createdAt: now, updatedAt: now };
+      const newConnection = { ...sanitizedIncoming, id: uuidv4(), createdAt: now, updatedAt: now };
       connections.push(newConnection);
     }
     store.set('connections', connections);
-    return connections;
+    return connections.map((conn) => sanitizeConnection(conn));
   });
 
   ipcMain.handle('db:delete-connection', (_event, id: string) => {

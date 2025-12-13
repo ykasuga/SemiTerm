@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Button } from "@renderer/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
+import { Input } from "@renderer/components/ui/input";
 import { Plus, Server, Trash2, Pencil } from "lucide-react";
 import { Connection } from "./types";
 import ConnectionEditor from "./ConnectionEditor";
@@ -36,14 +45,28 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("welcome");
   const [isEditorOpen, setEditorOpen] = useState(false);
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
+  const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
+  const [passwordInput, setPasswordInput] = useState("");
 
   useEffect(() => {
     window.api.getConnections().then(setConnections);
   }, []);
 
   const handleSaveConnection = async (connection: Connection) => {
+    const prevIds = new Set(connections.map((c) => c.id));
     const updatedConnections = await window.api.saveConnection(connection);
-    setConnections(updatedConnections);
+    let savedId = connection.id;
+    if (!savedId) {
+      const created = updatedConnections.find(conn => !prevIds.has(conn.id));
+      if (created) savedId = created.id;
+    }
+    const enrichedConnections = updatedConnections.map((conn) => {
+      if (savedId && conn.id === savedId && connection.auth.type === "password") {
+        return { ...conn, auth: { ...conn.auth, password: connection.auth.password } };
+      }
+      return conn;
+    });
+    setConnections(enrichedConnections);
     setEditorOpen(false);
     setEditingConnection(null);
   };
@@ -65,8 +88,8 @@ export default function App() {
     setEditorOpen(true);
   };
 
-  const addSshTab = (connection: Connection) => {
-    const newTabId = `ssh-${connection.id}`;
+  const openSshTab = (connection: Connection, tabId?: string) => {
+    const newTabId = tabId || `ssh-${connection.id}`;
     // Avoid opening duplicate tabs
     if (tabs.find(tab => tab.id === newTabId)) {
       setActiveTab(newTabId);
@@ -76,6 +99,36 @@ export default function App() {
     setTabs([...tabs, newTab]);
     setActiveTab(newTabId);
     window.api.sshConnect(connection, newTabId);
+  };
+
+  const handleConnectRequest = (connection: Connection) => {
+    const targetTabId = `ssh-${connection.id}`;
+    if (tabs.find(tab => tab.id === targetTabId)) {
+      setActiveTab(targetTabId);
+      return;
+    }
+    if (connection.auth.type === "password" && !connection.auth.password) {
+      setPendingConnection(connection);
+      setPasswordInput("");
+      return;
+    }
+    openSshTab(connection, targetTabId);
+  };
+
+  const closePasswordPrompt = () => {
+    setPendingConnection(null);
+    setPasswordInput("");
+  };
+
+  const confirmPasswordAndConnect = () => {
+    if (!pendingConnection || !passwordInput) return;
+    const updatedConnection: Connection = {
+      ...pendingConnection,
+      auth: { ...pendingConnection.auth, password: passwordInput },
+    };
+    setConnections((prev) => prev.map((conn) => conn.id === updatedConnection.id ? updatedConnection : conn));
+    closePasswordPrompt();
+    openSshTab(updatedConnection, `ssh-${updatedConnection.id}`);
   };
 
   return (
@@ -94,7 +147,7 @@ export default function App() {
             <ConnectionItem 
               key={conn.id} 
               connection={conn}
-              onConnect={addSshTab}
+              onConnect={handleConnectRequest}
               onEdit={openEditConnectionEditor}
               onDelete={handleDeleteConnection}
             />
@@ -149,6 +202,32 @@ export default function App() {
         </div>
       </Tabs>
       {isEditorOpen && <ConnectionEditor connection={editingConnection} onSave={handleSaveConnection} onCancel={() => setEditorOpen(false)} />}
+      {pendingConnection && (
+        <Dialog open onOpenChange={(open) => !open && closePasswordPrompt()}>
+          <DialogContent className="sm:max-w-[400px] bg-[#1e293b] text-white border-gray-700">
+            <DialogHeader>
+              <DialogTitle>パスワードを入力</DialogTitle>
+              <DialogDescription>
+                {pendingConnection.username}@{pendingConnection.host} に接続するためのパスワードを入力してください。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Input
+                type="password"
+                value={passwordInput}
+                autoFocus
+                placeholder="Password"
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="bg-gray-800 border-gray-600"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={closePasswordPrompt}>キャンセル</Button>
+              <Button onClick={confirmPasswordAndConnect} disabled={!passwordInput}>接続</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
