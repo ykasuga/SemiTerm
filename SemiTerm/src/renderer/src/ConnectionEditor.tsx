@@ -133,8 +133,15 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
            <p className="text-xs text-gray-500 pt-2">パスワードは保存されません（毎回入力が必要です）。</p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!isValid}>Save</Button>
+          <Button variant="outline" className="border-white text-white hover:bg-white/10" onClick={onCancel}>Cancel</Button>
+          <Button
+            variant="outline"
+            className="border-white text-white hover:bg-white/10 disabled:opacity-50"
+            onClick={handleSave}
+            disabled={!isValid}
+          >
+            Save
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

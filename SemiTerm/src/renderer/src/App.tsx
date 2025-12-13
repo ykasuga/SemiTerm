@@ -370,8 +370,15 @@ export default function App() {
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={closePasswordPrompt}>キャンセル</Button>
-              <Button onClick={confirmPasswordAndConnect} disabled={!passwordInput}>接続</Button>
+              <Button variant="outline" className="border-white text-white hover:bg-white/10" onClick={closePasswordPrompt}>キャンセル</Button>
+              <Button
+                variant="outline"
+                className="border-white text-white hover:bg-white/10 disabled:opacity-50"
+                onClick={confirmPasswordAndConnect}
+                disabled={!passwordInput}
+              >
+                接続
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
