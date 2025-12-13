@@ -286,6 +286,22 @@ export default function App() {
                     <div className="text-xl mb-6">SemiTerm 軽量 SSH ターミナル</div>
                     <Button onClick={openNewConnectionEditor}>新しい接続を作成</Button>
                   </div>
+                ) : tabStatuses[tab.id]?.state === "error" ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                    <div className="text-red-400 text-2xl">⚠ 接続エラー</div>
+                    <p className="text-gray-300">{tabStatuses[tab.id]?.errorMessage || '接続に失敗しました。'}</p>
+                    <div className="flex space-x-3">
+                      <Button variant="outline" onClick={() => closeTab(tab.id)}>タブを閉じる</Button>
+                      <Button
+                        onClick={() => {
+                          const connection = connections.find((conn) => `ssh-${conn.id}` === tab.id);
+                          if (connection) {
+                            openSshTab(connection, tab.id);
+                          }
+                        }}
+                      >再接続</Button>
+                    </div>
+                  </div>
                 ) : (
                   <TerminalComponent connectionId={tab.id} isActive={activeTab === tab.id} />
                 )}
