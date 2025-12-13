@@ -246,6 +246,7 @@ app.whenReady().then(() => {
           session.timeout = undefined
         }
         log.info(`[${resolvedSessionId}] SSH connection ready`)
+        sendToRenderer(senderId, 'ssh:connected', resolvedSessionId)
         client.shell((err, stream) => {
           if (err) {
             emitSshError(resolvedSessionId, senderId, err.message)

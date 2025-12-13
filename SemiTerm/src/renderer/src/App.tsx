@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -47,9 +47,52 @@ export default function App() {
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [passwordInput, setPasswordInput] = useState("");
+  const [tabStatuses, setTabStatuses] = useState<Record<string, { state: "connecting" | "connected" | "error" | "disconnected"; host?: string; username?: string; errorMessage?: string }>>({
+    welcome: { state: "disconnected" }
+  });
 
   useEffect(() => {
     window.api.getConnections().then(setConnections);
+  }, []);
+
+  useEffect(() => {
+    const handleError = (_event: unknown, id: string, error: { message: string }) => {
+      setTabStatuses((prev) => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] || {}),
+          state: "error",
+          errorMessage: error.message
+        }
+      }));
+    };
+    const handleClose = (_event: unknown, id: string) => {
+      setTabStatuses((prev) => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] || {}),
+          state: "disconnected"
+        }
+      }));
+    };
+    const handleConnected = (_event: unknown, id: string) => {
+      setTabStatuses((prev) => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] || {}),
+          state: "connected",
+          errorMessage: undefined
+        }
+      }));
+    };
+    window.electron.ipcRenderer.on("ssh:error", handleError);
+    window.electron.ipcRenderer.on("ssh:close", handleClose);
+    window.electron.ipcRenderer.on("ssh:connected", handleConnected);
+    return () => {
+      window.electron.ipcRenderer.removeListener("ssh:error", handleError);
+      window.electron.ipcRenderer.removeListener("ssh:close", handleClose);
+      window.electron.ipcRenderer.removeListener("ssh:connected", handleConnected);
+    };
   }, []);
 
   const handleSaveConnection = async (connection: Connection) => {
@@ -98,6 +141,14 @@ export default function App() {
     const newTab = { id: newTabId, label: `${newTabIndex} - ${connection.host}` };
     setTabs((prevTabs) => [...prevTabs, newTab]);
     setActiveTab(newTabId);
+    setTabStatuses((prev) => ({
+      ...prev,
+      [newTabId]: {
+        state: "connecting",
+        host: connection.host,
+        username: connection.username
+      }
+    }));
     window.api.sshConnect(connection, newTabId);
   };
 
@@ -158,6 +209,8 @@ export default function App() {
       window.removeEventListener("keydown", handleKeydown);
     };
   }, [activeTab, tabs]);
+
+  const activeStatus = useMemo(() => tabStatuses[activeTab], [tabStatuses, activeTab]);
 
   return (
     <div className="flex w-screen h-screen bg-[#0f172a] text-white">
@@ -239,6 +292,37 @@ export default function App() {
               </div>
             </TabsContent>
           ))}
+        </div>
+
+        <div className="h-6 bg-[#1e293b] border-t border-gray-700 flex items-center justify-between px-4 text-xs">
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-1">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  activeStatus?.state === "connected"
+                    ? "bg-green-400"
+                    : activeStatus?.state === "error"
+                      ? "bg-red-400"
+                      : activeStatus?.state === "connecting"
+                        ? "bg-yellow-400"
+                        : "bg-gray-500"
+                }`}
+              />
+              <span>
+                {activeStatus?.state === "connected"
+                  ? "接続中"
+                  : activeStatus?.state === "connecting"
+                    ? "接続中..."
+                    : activeStatus?.state === "error"
+                      ? `エラー: ${activeStatus.errorMessage}`
+                      : "切断"}
+              </span>
+            </div>
+            <div>
+              {activeStatus?.username ? `${activeStatus.username}@${activeStatus.host}` : "--"}
+            </div>
+          </div>
+          <div>Log Level: debug</div>
         </div>
       </Tabs>
       {isEditorOpen && <ConnectionEditor connection={editingConnection} onSave={handleSaveConnection} onCancel={() => setEditorOpen(false)} />}

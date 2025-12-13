@@ -8,6 +8,7 @@ declare global {
         send(channel: string, ...args: unknown[]): void;
         on(channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void): void;
         removeAllListeners(channel: string): void;
+        removeListener(channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void): void;
       };
     };
     api: {
