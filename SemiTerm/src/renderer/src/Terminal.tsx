@@ -57,7 +57,7 @@ const TerminalComponent: React.FC<TerminalProps> = ({ connectionId, isActive }) 
       window.electron.ipcRenderer.on(dataChannel, handleData)
 
       const onDataDisposable = term.onData((data) => {
-        window.electron.ipcRenderer.send('ssh:write', { id: connectionId, data })
+        window.api.sshWrite(connectionId, data)
       })
 
       const handleResize = (): void => {

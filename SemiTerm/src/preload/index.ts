@@ -18,7 +18,7 @@ const api = {
   deleteConnection: (id: string): Promise<Connection[]> => ipcRenderer.invoke('db:delete-connection', id),
   
   // SSH Operations
-  sshConnect: (connection: Connection) => ipcRenderer.send('ssh:connect', connection),
+  sshConnect: (connection: Connection, sessionId: string) => ipcRenderer.send('ssh:connect', connection, sessionId),
   sshWrite: (id: string, data: string) => ipcRenderer.send('ssh:write', id, data),
   sshResize: (id: string, cols: number, rows: number, height: number, width: number) => ipcRenderer.send('ssh:resize', id, { cols, rows, height, width }),
   sshClose: (id: string) => ipcRenderer.send('ssh:close', id),

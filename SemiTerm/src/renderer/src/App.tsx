@@ -75,7 +75,7 @@ export default function App() {
     const newTab = { id: newTabId, label: `${tabs.length} - ${connection.host}` };
     setTabs([...tabs, newTab]);
     setActiveTab(newTabId);
-    window.api.sshConnect(connection);
+    window.api.sshConnect(connection, newTabId);
   };
 
   return (

@@ -1,11 +1,84 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, webContents } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
 import type { Connection } from '../renderer/src/types'
 import { v4 as uuidv4 } from 'uuid'
+import log from 'electron-log'
+import { Client, ClientChannel, ConnectConfig } from 'ssh2'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
+import { homedir } from 'os'
 
+
+type SessionRecord = {
+  client: Client
+  stream?: ClientChannel
+  webContentsId: number
+  timeout?: NodeJS.Timeout
+}
+
+const sessions = new Map<string, SessionRecord>()
+
+function resolveKeyPath(keyPath: string): string {
+  if (keyPath.startsWith('~')) {
+    return join(homedir(), keyPath.slice(1))
+  }
+  return keyPath
+}
+
+function ensureLogFile(): void {
+  const userData = app.getPath('userData')
+  const date = new Date().toISOString().slice(0, 10)
+  const logDir = join(userData, 'logs', date)
+  if (!existsSync(logDir)) {
+    mkdirSync(logDir, { recursive: true })
+  }
+  log.transports.file.resolvePathFn = () => join(logDir, 'semiterm.log')
+  log.transports.file.level = 'debug'
+  log.info('Logger initialized', { logDir })
+}
+
+function sendToRenderer(contentsId: number, channel: string, ...args: unknown[]): void {
+  const contents = webContents.fromId(contentsId)
+  contents?.send(channel, ...args)
+}
+
+function emitSshError(sessionId: string, contentsId: number, message: string): void {
+  log.error(`[${sessionId}] SSH error: ${message}`)
+  sendToRenderer(contentsId, 'ssh:error', sessionId, { message })
+}
+
+function disposeSession(sessionId: string, emitClose = false): void {
+  const session = sessions.get(sessionId)
+  if (!session) return
+
+  if (session.timeout) {
+    clearTimeout(session.timeout)
+  }
+
+  if (session.stream) {
+    try {
+      session.stream.removeAllListeners()
+      session.stream.close()
+    } catch (error) {
+      log.warn(`[${sessionId}] Failed to close stream`, error)
+    }
+  }
+
+  session.client.removeAllListeners()
+  try {
+    session.client.end()
+  } catch (error) {
+    log.warn(`[${sessionId}] Failed to end client`, error)
+  }
+
+  sessions.delete(sessionId)
+  log.info(`[${sessionId}] Session disposed`)
+  if (emitClose) {
+    sendToRenderer(session.webContentsId, 'ssh:close', sessionId)
+  }
+}
 
 // Create the browser window.
 function createWindow(): void {
@@ -45,6 +118,8 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron.semiterm')
+
+  ensureLogFile()
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -99,26 +174,143 @@ app.whenReady().then(() => {
     return connections;
   });
 
-  // SSH Handlers (Placeholders)
-  ipcMain.on('ssh:connect', (_event, connection: Connection) => {
-    console.log('SSH Connect:', connection.title);
-    // SSH connection logic will go here
-  });
+  // SSH Handlers
+  ipcMain.on('ssh:connect', (event, connection: Connection, sessionId?: string) => {
+    const resolvedSessionId = sessionId || connection.id || uuidv4()
+    const senderId = event.sender.id
+    log.info(`[${resolvedSessionId}] Connecting to ${connection.username}@${connection.host}:${connection.port}`)
 
-  ipcMain.on('ssh:write', (_event, id: string, data: string) => {
-    console.log(`SSH Write to ${id}:`, data);
-    // SSH write logic will go here
-  });
+    disposeSession(resolvedSessionId)
 
-  ipcMain.on('ssh:resize', (_event, id: string, size: { cols: number, rows: number }) => {
-    console.log(`SSH Resize for ${id}:`, size);
-    // SSH resize logic will go here
-  });
+    if (connection.auth.type === 'password' && !connection.auth.password) {
+      emitSshError(resolvedSessionId, senderId, 'パスワードが入力されていません')
+      return
+    }
 
-  ipcMain.on('ssh:close', (_event, id: string) => {
-    console.log(`SSH Close:`, id);
-    // SSH close logic will go here
-  });
+    if (connection.auth.type === 'key' && !connection.auth.keyPath) {
+      emitSshError(resolvedSessionId, senderId, '秘密鍵のパスが設定されていません')
+      return
+    }
+
+    const client = new Client()
+    const timeout = setTimeout(() => {
+      emitSshError(resolvedSessionId, senderId, '接続がタイムアウトしました')
+      disposeSession(resolvedSessionId)
+    }, 10000)
+
+    sessions.set(resolvedSessionId, { client, webContentsId: senderId, timeout })
+
+    const sshConfig: ConnectConfig = {
+      host: connection.host,
+      port: connection.port || 22,
+      username: connection.username,
+      keepaliveInterval: 15000,
+      keepaliveCountMax: 3,
+      readyTimeout: 10000
+    }
+
+    try {
+      if (connection.auth.type === 'password' && connection.auth.password) {
+        sshConfig.password = connection.auth.password
+      } else if (connection.auth.type === 'key' && connection.auth.keyPath) {
+        const resolvedPath = resolveKeyPath(connection.auth.keyPath)
+        const keyBuffer = readFileSync(resolvedPath)
+        sshConfig.privateKey = keyBuffer
+      }
+    } catch (error) {
+      emitSshError(resolvedSessionId, senderId, '秘密鍵の読み込みに失敗しました')
+      disposeSession(resolvedSessionId)
+      return
+    }
+
+    client
+      .on('ready', () => {
+        const session = sessions.get(resolvedSessionId)
+        if (session?.timeout) {
+          clearTimeout(session.timeout)
+          session.timeout = undefined
+        }
+        log.info(`[${resolvedSessionId}] SSH connection ready`)
+        client.shell((err, stream) => {
+          if (err) {
+            emitSshError(resolvedSessionId, senderId, err.message)
+            disposeSession(resolvedSessionId)
+            return
+          }
+
+          const updatedSession = sessions.get(resolvedSessionId)
+          if (!updatedSession) {
+            stream.close()
+            return
+          }
+          updatedSession.stream = stream
+          sessions.set(resolvedSessionId, updatedSession)
+
+          stream.on('data', (data: Buffer | string) => {
+            sendToRenderer(updatedSession.webContentsId, 'ssh:data', resolvedSessionId, data)
+            sendToRenderer(updatedSession.webContentsId, `ssh:data:${resolvedSessionId}`, data)
+          })
+
+          stream.stderr?.on('data', (data: Buffer | string) => {
+            sendToRenderer(updatedSession.webContentsId, 'ssh:data', resolvedSessionId, data)
+            sendToRenderer(updatedSession.webContentsId, `ssh:data:${resolvedSessionId}`, data)
+          })
+
+          stream.on('close', () => {
+            log.info(`[${resolvedSessionId}] SSH stream closed`)
+            disposeSession(resolvedSessionId, true)
+          })
+        })
+      })
+      .on('error', (error) => {
+        emitSshError(resolvedSessionId, senderId, error.message)
+        disposeSession(resolvedSessionId)
+      })
+      .on('end', () => {
+        log.info(`[${resolvedSessionId}] SSH connection ended`)
+        disposeSession(resolvedSessionId, true)
+      })
+      .on('close', () => {
+        log.info(`[${resolvedSessionId}] SSH connection closed`)
+        disposeSession(resolvedSessionId, true)
+      })
+
+    try {
+      client.connect(sshConfig)
+    } catch (error) {
+      emitSshError(resolvedSessionId, senderId, 'SSH接続に失敗しました')
+      disposeSession(resolvedSessionId)
+    }
+  })
+
+  ipcMain.on('ssh:write', (_event, arg1: string | { id: string; data: string }, arg2?: string) => {
+    const sessionId = typeof arg1 === 'string' ? arg1 : arg1.id
+    const data = typeof arg1 === 'string' ? arg2 : arg1.data
+    if (!sessionId || data === undefined) return
+    const session = sessions.get(sessionId)
+    session?.stream?.write(data)
+  })
+
+  ipcMain.on(
+    'ssh:resize',
+    (
+      _event,
+      arg1: string | { id: string; size: { cols: number; rows: number; height?: number; width?: number } },
+      arg2?: { cols: number; rows: number; height?: number; width?: number }
+    ) => {
+      const sessionId = typeof arg1 === 'string' ? arg1 : arg1.id
+      const size = typeof arg1 === 'string' ? arg2 : arg1.size
+      if (!sessionId || !size) return
+      const session = sessions.get(sessionId)
+      if (session?.stream) {
+        session.stream.setWindow(size.rows, size.cols, size.height ?? 0, size.width ?? 0)
+      }
+    }
+  )
+
+  ipcMain.on('ssh:close', (_event, sessionId: string) => {
+    disposeSession(sessionId, true)
+  })
 
 
   app.on('activate', function () {

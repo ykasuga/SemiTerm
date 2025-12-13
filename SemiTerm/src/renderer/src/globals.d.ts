@@ -22,7 +22,7 @@ declare global {
       deleteConnection: (id: string) => Promise<Connection[]>;
       
       // SSH Operations
-      sshConnect: (connection: Connection) => void;
+      sshConnect: (connection: Connection, sessionId: string) => void;
       sshWrite: (id: string, data: string) => void;
       sshResize: (id: string, cols: number, rows: number, height: number, width: number) => void;
       sshClose: (id: string) => void;
