@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -47,9 +47,16 @@ export default function App() {
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [passwordInput, setPasswordInput] = useState("");
+  const [tabConnections, setTabConnections] = useState<Record<string, Connection>>({});
   const [tabStatuses, setTabStatuses] = useState<Record<string, { state: "connecting" | "connected" | "error" | "disconnected"; host?: string; username?: string; errorMessage?: string }>>({
     welcome: { state: "disconnected" }
   });
+  const tabSerialRef = useRef(0);
+
+  const createTabId = () => {
+    tabSerialRef.current += 1;
+    return `ssh-tab-${tabSerialRef.current}`;
+  };
 
   useEffect(() => {
     window.api.getConnections().then(setConnections);
@@ -132,15 +139,20 @@ export default function App() {
   };
 
   const openSshTab = (connection: Connection, tabId?: string) => {
-    const newTabId = tabId || `ssh-${connection.id}`;
-    if (tabs.find(tab => tab.id === newTabId)) {
-      setActiveTab(newTabId);
-      return;
-    }
-    const newTabIndex = tabs.length;
-    const newTab = { id: newTabId, label: `${newTabIndex} - ${connection.host}` };
-    setTabs((prevTabs) => [...prevTabs, newTab]);
+    const newTabId = tabId || createTabId();
+    setTabs((prevTabs) => {
+      if (prevTabs.find(tab => tab.id === newTabId)) {
+        return prevTabs;
+      }
+      const newTabIndex = prevTabs.length;
+      const newTab = { id: newTabId, label: `${newTabIndex} - ${connection.host}` };
+      return [...prevTabs, newTab];
+    });
     setActiveTab(newTabId);
+    setTabConnections((prev) => ({
+      ...prev,
+      [newTabId]: connection
+    }));
     setTabStatuses((prev) => ({
       ...prev,
       [newTabId]: {
@@ -153,17 +165,12 @@ export default function App() {
   };
 
   const handleConnectRequest = (connection: Connection) => {
-    const targetTabId = `ssh-${connection.id}`;
-    if (tabs.find(tab => tab.id === targetTabId)) {
-      setActiveTab(targetTabId);
-      return;
-    }
     if (connection.auth.type === "password" && !connection.auth.password) {
       setPendingConnection(connection);
       setPasswordInput("");
       return;
     }
-    openSshTab(connection, targetTabId);
+    openSshTab(connection);
   };
 
   const closePasswordPrompt = () => {
@@ -179,7 +186,7 @@ export default function App() {
     };
     setConnections((prev) => prev.map((conn) => conn.id === updatedConnection.id ? updatedConnection : conn));
     closePasswordPrompt();
-    openSshTab(updatedConnection, `ssh-${updatedConnection.id}`);
+    openSshTab(updatedConnection);
   };
 
   const closeTab = (tabId: string) => {
@@ -193,6 +200,14 @@ export default function App() {
         setActiveTab(fallbackTab ? fallbackTab.id : "welcome");
       }
       return newTabs;
+    });
+    setTabStatuses((prev) => {
+      const { [tabId]: _removed, ...rest } = prev;
+      return rest;
+    });
+    setTabConnections((prev) => {
+      const { [tabId]: _removed, ...rest } = prev;
+      return rest;
     });
     window.api.sshClose(tabId);
   };
@@ -294,7 +309,7 @@ export default function App() {
                       <Button variant="outline" onClick={() => closeTab(tab.id)}>タブを閉じる</Button>
                       <Button
                         onClick={() => {
-                          const connection = connections.find((conn) => `ssh-${conn.id}` === tab.id);
+                          const connection = tabConnections[tab.id];
                           if (connection) {
                             openSshTab(connection, tab.id);
                           }
