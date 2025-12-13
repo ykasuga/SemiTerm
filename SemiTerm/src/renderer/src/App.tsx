@@ -244,7 +244,15 @@ export default function App() {
       {isEditorOpen && <ConnectionEditor connection={editingConnection} onSave={handleSaveConnection} onCancel={() => setEditorOpen(false)} />}
       {pendingConnection && (
         <Dialog open onOpenChange={(open) => !open && closePasswordPrompt()}>
-          <DialogContent className="sm:max-w-[400px] bg-[#1e293b] text-white border-gray-700">
+          <DialogContent
+            className="sm:max-w-[400px] bg-[#1e293b] text-white border-gray-700"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && passwordInput) {
+                e.preventDefault();
+                confirmPasswordAndConnect();
+              }
+            }}
+          >
             <DialogHeader>
               <DialogTitle>パスワードを入力</DialogTitle>
               <DialogDescription>
