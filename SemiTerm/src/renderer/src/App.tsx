@@ -312,11 +312,7 @@ export default function App() {
 
       {/* Main */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <div className="h-12 bg-[#1e293b] border-b border-gray-700 flex items-center px-4 space-x-4">
-            <div className="flex items-center space-x-2 pr-4 border-r border-gray-700">
-              <img src={appIcon} alt="SemiTerm ロゴ" className="w-5 h-5" draggable={false} />
-              <span className="text-sm font-semibold tracking-wide">SemiTerm</span>
-            </div>
+        <div className="h-12 bg-[#1e293b] border-b border-gray-700 flex items-center px-4">
             <TabsList className="bg-transparent h-full p-0">
               {tabs.map((tab) => (
                 <TabsTrigger
