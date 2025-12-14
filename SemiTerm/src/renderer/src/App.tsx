@@ -14,6 +14,7 @@ import { Plus, Server, Trash2, Pencil, X } from "lucide-react";
 import { Connection } from "./types";
 import ConnectionEditor from "./ConnectionEditor";
 import TerminalComponent from "./Terminal";
+import appIcon from "../../../resources/icon.png?asset";
 
 // Sidebar item
 function ConnectionItem({ connection, onConnect, onEdit, onDelete }: { connection: Connection, onConnect: (c: Connection) => void, onEdit: (c: Connection) => void, onDelete: (id: string) => void }) {
@@ -280,6 +281,13 @@ export default function App() {
     <div className="flex w-screen h-screen bg-[#0f172a] text-white">
       {/* Sidebar */}
       <div className="w-64 bg-[#1e293b] border-r border-gray-700 p-4 flex flex-col">
+        <div className="flex items-center space-x-3 mb-6">
+          <img src={appIcon} alt="SemiTerm ロゴ" className="w-8 h-8 rounded-lg" draggable={false} />
+          <div>
+            <div className="text-lg font-bold leading-tight">SemiTerm</div>
+            <div className="text-xs text-gray-400 leading-tight">Lightweight SSH</div>
+          </div>
+        </div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">接続先</h2>
           <Button variant="ghost" size="icon" onClick={openNewConnectionEditor}>
@@ -304,7 +312,11 @@ export default function App() {
 
       {/* Main */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <div className="h-12 bg-[#1e293b] border-b border-gray-700 flex items-center px-4">
+        <div className="h-12 bg-[#1e293b] border-b border-gray-700 flex items-center px-4 space-x-4">
+            <div className="flex items-center space-x-2 pr-4 border-r border-gray-700">
+              <img src={appIcon} alt="SemiTerm ロゴ" className="w-5 h-5" draggable={false} />
+              <span className="text-sm font-semibold tracking-wide">SemiTerm</span>
+            </div>
             <TabsList className="bg-transparent h-full p-0">
               {tabs.map((tab) => (
                 <TabsTrigger

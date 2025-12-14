@@ -197,6 +197,7 @@ SemiTerm は、Windows / macOS で動作する軽量 SSH ターミナルアプ�
 
 * アプリ起動時のウィンドウ左上に「SemiTerm」ロゴを 20px 表示
 * サイドバー上部にも縮小表示（32px）
+* 実装では `resources/icon.png` を利用し、上記 20px / 32px それぞれにスケールして配置する
 
 ### 11.7 エラーダイアログのデザイン
 
@@ -218,7 +219,7 @@ SemiTerm は、Windows / macOS で動作する軽量 SSH ターミナルアプ�
 
 * **アプリ名：SemiTerm**
 * **ロゴ：明るく、フラット、シンプル。イメージカラー：ブルー**
-* 採用済みアイコン：`A_logo_for_a_software_application_named_"SemiTerm".png`
+* 採用済みアイコン：`icon.png`
 
 ---
 
