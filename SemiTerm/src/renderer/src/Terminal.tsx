@@ -85,11 +85,15 @@ const TerminalComponent: React.FC<TerminalProps> = ({ connectionId, isActive, re
   }, [connectionId])
 
   useEffect(() => {
-    if (isActive && xtermInstanceRef.current) {
-      setTimeout(() => {
-        xtermInstanceRef.current?.fitAddon.fit()
-      }, 100)
-    }
+    if (!isActive || !xtermInstanceRef.current) return
+
+    const { term, fitAddon } = xtermInstanceRef.current
+    const timeoutId = window.setTimeout(() => {
+      term.focus()
+      fitAddon.fit()
+    }, 50)
+
+    return () => window.clearTimeout(timeoutId)
   }, [isActive])
 
   useEffect(() => {
