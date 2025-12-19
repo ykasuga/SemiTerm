@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -52,6 +52,8 @@ export default function App() {
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; connection: Connection } | null>(null);
   const tabSerialRef = useRef(0);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
 
   const createTabId = () => {
     tabSerialRef.current += 1;
@@ -232,6 +234,40 @@ export default function App() {
     setContextMenuState(null);
   }, []);
 
+  const reorderTabs = useCallback((sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setTabs((prevTabs) => {
+      const sourceIndex = prevTabs.findIndex(tab => tab.id === sourceId);
+      const targetIndex = prevTabs.findIndex(tab => tab.id === targetId);
+      if (sourceIndex === -1 || targetIndex === -1) {
+        return prevTabs;
+      }
+      const updatedTabs = [...prevTabs];
+      const [movedTab] = updatedTabs.splice(sourceIndex, 1);
+      updatedTabs.splice(targetIndex, 0, movedTab);
+      return updatedTabs;
+    });
+  }, []);
+
+  const handleTabDragStart = useCallback((event: ReactDragEvent<HTMLButtonElement>, tabId: string) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", tabId);
+    setDraggingTabId(tabId);
+  }, []);
+
+  const handleTabDrop = useCallback((tabId: string) => {
+    if (draggingTabId) {
+      reorderTabs(draggingTabId, tabId);
+    }
+    setDragOverTabId(null);
+    setDraggingTabId(null);
+  }, [draggingTabId, reorderTabs]);
+
+  const resetDragState = useCallback(() => {
+    setDragOverTabId(null);
+    setDraggingTabId(null);
+  }, []);
+
   const handleConnectionContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>, connection: Connection) => {
     event.preventDefault();
     event.stopPropagation();
@@ -365,7 +401,26 @@ export default function App() {
                 <TabsTrigger
                   key={tab.id}
                   value={tab.id}
-                  className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700"
+                  draggable
+                  onDragStart={(event) => handleTabDragStart(event, tab.id)}
+                  onDragOver={(event) => {
+                    if (!draggingTabId) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDragEnter={() => {
+                    if (draggingTabId && draggingTabId !== tab.id) {
+                      setDragOverTabId(tab.id);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    handleTabDrop(tab.id);
+                  }}
+                  onDragEnd={resetDragState}
+                  className={`h-full rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700 ${
+                    dragOverTabId === tab.id && draggingTabId !== tab.id ? "border-blue-400" : ""
+                  } ${draggingTabId === tab.id ? "opacity-60" : ""}`}
                 >
                   <span className="mr-2">{tab.label}</span>
                   <button
