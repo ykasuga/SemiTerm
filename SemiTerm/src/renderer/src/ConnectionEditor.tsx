@@ -69,7 +69,22 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
   };
   
   const handleAuthTypeChange = (value: 'password' | 'key') => {
-    setFormData(prev => ({ ...prev, auth: { type: value } }));
+    setFormData(prev => ({
+      ...prev,
+      auth: value === 'password'
+        ? { type: 'password', password: prev.auth.type === 'password' ? prev.auth.password : '' }
+        : { type: 'key', keyPath: prev.auth.type === 'key' ? prev.auth.keyPath : '' }
+    }));
+  };
+
+  const handleBrowseKeyFile = async () => {
+    const selectedPath = await window.api.openKeyFileDialog();
+    if (selectedPath) {
+      setFormData(prev => ({
+        ...prev,
+        auth: { type: 'key', keyPath: selectedPath }
+      }));
+    }
   };
 
   const handleSave = () => {
@@ -109,7 +124,7 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
           </div>
           <div className="grid w-full items-center gap-1.5">
             <Label>認証方式</Label>
-            <Select onValueChange={handleAuthTypeChange} defaultValue={formData.auth.type}>
+            <Select onValueChange={handleAuthTypeChange} value={formData.auth.type}>
               <SelectTrigger className="bg-gray-800 border-gray-600">
                 <SelectValue placeholder="認証方式を選択" />
               </SelectTrigger>
@@ -127,7 +142,23 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
           ) : (
             <div className="grid w-full items-center gap-1.5">
               <Label htmlFor="keyPath">Key Path</Label>
-              <Input id="keyPath" name="keyPath" value={formData.auth.keyPath || ''} onChange={handleAuthChange} className="bg-gray-800 border-gray-600" />
+              <div className="flex gap-2">
+                <Input
+                  id="keyPath"
+                  name="keyPath"
+                  value={formData.auth.keyPath || ''}
+                  onChange={handleAuthChange}
+                  className="bg-gray-800 border-gray-600"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-white text-white hover:bg-white/10"
+                  onClick={handleBrowseKeyFile}
+                >
+                  参照
+                </Button>
+              </div>
             </div>
           )}
            <p className="text-xs text-gray-500 pt-2">パスワードは保存されません（毎回入力が必要です）。</p>

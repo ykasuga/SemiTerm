@@ -16,6 +16,7 @@ const api = {
   getConnections: (): Promise<Connection[]> => ipcRenderer.invoke('db:get-connections'),
   saveConnection: (connection: Connection): Promise<Connection[]> => ipcRenderer.invoke('db:save-connection', connection),
   deleteConnection: (id: string): Promise<Connection[]> => ipcRenderer.invoke('db:delete-connection', id),
+  openKeyFileDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:open-key-file'),
   
   // SSH Operations
   sshConnect: (connection: Connection, sessionId: string) => ipcRenderer.send('ssh:connect', connection, sessionId),

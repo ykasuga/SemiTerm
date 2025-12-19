@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, webContents } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, webContents, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -22,7 +22,11 @@ const sessions = new Map<string, SessionRecord>()
 
 function resolveKeyPath(keyPath: string): string {
   if (keyPath.startsWith('~')) {
-    return join(homedir(), keyPath.slice(1))
+    const suffix = keyPath.slice(1).replace(/^[/\\]/, '')
+    if (!suffix) {
+      return homedir()
+    }
+    return join(homedir(), suffix)
   }
   return keyPath
 }
@@ -187,6 +191,28 @@ app.whenReady().then(() => {
     connections = connections.filter(c => c.id !== id);
     store.set('connections', connections);
     return connections;
+  });
+
+  ipcMain.handle('dialog:open-key-file', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '秘密鍵を選択',
+      defaultPath: join(homedir(), '.ssh'),
+      properties: ['openFile'],
+      filters: [
+        {
+          name: 'SSH Private Keys',
+          extensions: ['pem', 'ppk', 'key', 'rsa', '']
+        },
+        {
+          name: 'All Files',
+          extensions: ['*']
+        }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+    return result.filePaths[0]
   });
 
   // SSH Handlers

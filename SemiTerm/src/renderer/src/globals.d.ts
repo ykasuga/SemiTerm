@@ -21,6 +21,7 @@ declare global {
       getConnections: () => Promise<Connection[]>;
       saveConnection: (connection: Connection) => Promise<Connection[]>;
       deleteConnection: (id: string) => Promise<Connection[]>;
+      openKeyFileDialog: () => Promise<string | null>;
       
       // SSH Operations
       sshConnect: (connection: Connection, sessionId: string) => void;
