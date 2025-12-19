@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -16,25 +17,20 @@ import ConnectionEditor from "./ConnectionEditor";
 import TerminalComponent from "./Terminal";
 import appIcon from "../../../resources/icon.png?asset";
 
+type ConnectionContextMenuHandler = (event: ReactMouseEvent<HTMLDivElement>, connection: Connection) => void;
+
 // Sidebar item
-function ConnectionItem({ connection, onConnect, onEdit, onDelete }: { connection: Connection, onConnect: (c: Connection) => void, onEdit: (c: Connection) => void, onDelete: (id: string) => void }) {
+function ConnectionItem({ connection, onConnect, onContextMenu }: { connection: Connection, onConnect: (c: Connection) => void, onContextMenu: ConnectionContextMenuHandler }) {
   return (
     <div 
       className="p-3 group hover:bg-gray-700 rounded-lg cursor-pointer flex items-center"
       onClick={() => onConnect(connection)}
+      onContextMenu={(event) => onContextMenu(event, connection)}
     >
       <Server className="w-6 h-6 mr-4 text-gray-400" />
       <div className="flex-1">
         <div className="font-semibold text-gray-100 truncate">{connection.title}</div>
         <div className="text-gray-400 text-sm">{connection.username}@{connection.host}</div>
-      </div>
-      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-        <Button variant="ghost" size="icon" className="mr-1" onClick={(e) => { e.stopPropagation(); onEdit(connection); }}>
-          <Pencil className="w-4 h-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onDelete(connection.id); }}>
-          <Trash2 className="w-4 h-4 text-red-500" />
-        </Button>
       </div>
     </div>
   );
@@ -53,7 +49,9 @@ export default function App() {
     welcome: { state: "disconnected" }
   });
   const [tabSessionTokens, setTabSessionTokens] = useState<Record<string, number>>({});
+  const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; connection: Connection } | null>(null);
   const tabSerialRef = useRef(0);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const createTabId = () => {
     tabSerialRef.current += 1;
@@ -226,6 +224,31 @@ export default function App() {
     window.api.sshClose(tabId);
   }, [activeTab]);
 
+  const closeContextMenu = useCallback(() => {
+    setContextMenuState(null);
+  }, []);
+
+  const handleConnectionContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>, connection: Connection) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const padding = 12;
+    const menuWidth = 200;
+    const menuHeight = 100;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x + menuWidth > viewportWidth - padding) {
+      x = viewportWidth - menuWidth - padding;
+    }
+    if (y + menuHeight > viewportHeight - padding) {
+      y = viewportHeight - menuHeight - padding;
+    }
+    x = Math.max(padding, x);
+    y = Math.max(padding, y);
+    setContextMenuState({ connection, x, y });
+  }, []);
+
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
       const isModifierPressed = event.metaKey || event.ctrlKey;
@@ -275,6 +298,27 @@ export default function App() {
     };
   }, [activeTab, tabs, tabConnections, closeTab, openNewConnectionEditor, startSshSession]);
 
+  useEffect(() => {
+    if (!contextMenuState) return;
+    const handleMouseDown = (event: MouseEvent) => {
+      if (contextMenuRef.current && contextMenuRef.current.contains(event.target as Node)) {
+        return;
+      }
+      setContextMenuState(null);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setContextMenuState(null);
+      }
+    };
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [contextMenuState]);
+
   const activeStatus = useMemo(() => tabStatuses[activeTab], [tabStatuses, activeTab]);
 
   return (
@@ -301,8 +345,7 @@ export default function App() {
               key={conn.id} 
               connection={conn}
               onConnect={handleConnectRequest}
-              onEdit={openEditConnectionEditor}
-              onDelete={handleDeleteConnection}
+              onContextMenu={handleConnectionContextMenu}
             />
           ))}
         </div>
@@ -417,6 +460,36 @@ export default function App() {
           <div>Log Level: debug</div>
         </div>
       </Tabs>
+      {contextMenuState && (
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          <div
+            ref={contextMenuRef}
+            className="absolute pointer-events-auto w-48 bg-[#1e293b] border border-gray-700 rounded-md shadow-lg py-1"
+            style={{ top: contextMenuState.y, left: contextMenuState.x }}
+          >
+            <button
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 flex items-center space-x-2"
+              onClick={() => {
+                openEditConnectionEditor(contextMenuState.connection);
+                closeContextMenu();
+              }}
+            >
+              <Pencil className="w-4 h-4" />
+              <span>編集</span>
+            </button>
+            <button
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 flex items-center space-x-2 text-red-400"
+              onClick={() => {
+                closeContextMenu();
+                handleDeleteConnection(contextMenuState.connection.id);
+              }}
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>削除</span>
+            </button>
+          </div>
+        </div>
+      )}
       {isEditorOpen && <ConnectionEditor connection={editingConnection} onSave={handleSaveConnection} onCancel={() => setEditorOpen(false)} />}
       {pendingConnection && (
         <Dialog open onOpenChange={(open) => !open && closePasswordPrompt()}>
