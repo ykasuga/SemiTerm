@@ -22,15 +22,15 @@ type ConnectionContextMenuHandler = (event: ReactMouseEvent<HTMLDivElement>, con
 // Sidebar item
 function ConnectionItem({ connection, onConnect, onContextMenu }: { connection: Connection, onConnect: (c: Connection) => void, onContextMenu: ConnectionContextMenuHandler }) {
   return (
-    <div 
-      className="p-3 group hover:bg-gray-700 rounded-lg cursor-pointer flex items-center"
+    <div
+      className="py-2 px-3 group hover:bg-gray-700 rounded-md cursor-pointer flex items-center gap-3"
       onClick={() => onConnect(connection)}
       onContextMenu={(event) => onContextMenu(event, connection)}
     >
-      <Server className="w-6 h-6 mr-4 text-gray-400" />
-      <div className="flex-1">
-        <div className="font-semibold text-gray-100 truncate">{connection.title}</div>
-        <div className="text-gray-400 text-sm">{connection.username}@{connection.host}</div>
+      <Server className="w-5 h-5 text-gray-400" />
+      <div className="flex-1 leading-tight">
+        <div className="font-medium text-gray-100 text-sm truncate">{connection.title}</div>
+        <div className="text-gray-400 text-xs">{connection.username}@{connection.host}</div>
       </div>
     </div>
   );
@@ -339,7 +339,7 @@ export default function App() {
           </Button>
         </div>
 
-        <div className="space-y-2 flex-1 overflow-y-auto">
+        <div className="space-y-1 flex-1 overflow-y-auto">
           {connections.map(conn => (
             <ConnectionItem 
               key={conn.id} 
