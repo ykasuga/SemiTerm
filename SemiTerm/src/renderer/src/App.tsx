@@ -198,14 +198,16 @@ export default function App() {
   };
 
   const closeTab = useCallback((tabId: string) => {
-    if (tabId === "welcome") return;
     setTabs((prevTabs) => {
       const tabIndex = prevTabs.findIndex(tab => tab.id === tabId);
       if (tabIndex === -1) return prevTabs;
       const newTabs = prevTabs.filter(tab => tab.id !== tabId);
       if (activeTab === tabId) {
-        const fallbackTab = newTabs[tabIndex - 1 >= 0 ? tabIndex - 1 : 0];
-        setActiveTab(fallbackTab ? fallbackTab.id : "welcome");
+        const fallbackIndex = newTabs.length === 0
+          ? -1
+          : Math.min(tabIndex, newTabs.length - 1);
+        const fallbackTab = fallbackIndex >= 0 ? newTabs[fallbackIndex] : undefined;
+        setActiveTab(fallbackTab ? fallbackTab.id : "");
       }
       return newTabs;
     });
@@ -221,7 +223,9 @@ export default function App() {
       const { [tabId]: _removed, ...rest } = prev;
       return rest;
     });
-    window.api.sshClose(tabId);
+    if (tabId !== "welcome") {
+      window.api.sshClose(tabId);
+    }
   }, [activeTab]);
 
   const closeContextMenu = useCallback(() => {
@@ -364,18 +368,16 @@ export default function App() {
                   className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700"
                 >
                   <span className="mr-2">{tab.label}</span>
-                  {tab.id !== "welcome" && (
-                    <button
-                      className="flex items-center justify-center w-4 h-4 rounded-full hover:bg-gray-600"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeTab(tab.id);
-                      }}
-                      aria-label="タブを閉じる"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
+                  <button
+                    className="flex items-center justify-center w-4 h-4 rounded-full hover:bg-gray-600"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(tab.id);
+                    }}
+                    aria-label="タブを閉じる"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </TabsTrigger>
               ))}
             </TabsList>
