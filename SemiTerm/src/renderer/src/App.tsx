@@ -50,8 +50,10 @@ export default function App() {
   });
   const [tabSessionTokens, setTabSessionTokens] = useState<Record<string, number>>({});
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; connection: Connection } | null>(null);
+  const [tabContextMenuState, setTabContextMenuState] = useState<{ x: number; y: number; tabId: string } | null>(null);
   const tabSerialRef = useRef(0);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const tabContextMenuRef = useRef<HTMLDivElement | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
 
@@ -199,39 +201,79 @@ export default function App() {
     openSshTab(updatedConnection);
   };
 
-  const closeTab = useCallback((tabId: string) => {
+  const closeTabsByIds = useCallback((tabIds: string[]) => {
+    const uniqueIds = Array.from(new Set(tabIds));
+    if (uniqueIds.length === 0) return;
     setTabs((prevTabs) => {
-      const tabIndex = prevTabs.findIndex(tab => tab.id === tabId);
-      if (tabIndex === -1) return prevTabs;
-      const newTabs = prevTabs.filter(tab => tab.id !== tabId);
-      if (activeTab === tabId) {
+      const toRemove = new Set(uniqueIds);
+      if (prevTabs.every((tab) => !toRemove.has(tab.id))) {
+        return prevTabs;
+      }
+      const newTabs = prevTabs.filter(tab => !toRemove.has(tab.id));
+      if (toRemove.has(activeTab)) {
+        const removedIndex = prevTabs.findIndex(tab => tab.id === activeTab);
         const fallbackIndex = newTabs.length === 0
           ? -1
-          : Math.min(tabIndex, newTabs.length - 1);
+          : Math.min(removedIndex, newTabs.length - 1);
         const fallbackTab = fallbackIndex >= 0 ? newTabs[fallbackIndex] : undefined;
         setActiveTab(fallbackTab ? fallbackTab.id : "");
       }
       return newTabs;
     });
     setTabStatuses((prev) => {
-      const { [tabId]: _removed, ...rest } = prev;
-      return rest;
+      const next = { ...prev };
+      uniqueIds.forEach((id) => {
+        delete next[id];
+      });
+      return next;
     });
     setTabConnections((prev) => {
-      const { [tabId]: _removed, ...rest } = prev;
-      return rest;
+      const next = { ...prev };
+      uniqueIds.forEach((id) => {
+        delete next[id];
+      });
+      return next;
     });
     setTabSessionTokens((prev) => {
-      const { [tabId]: _removed, ...rest } = prev;
-      return rest;
+      const next = { ...prev };
+      uniqueIds.forEach((id) => {
+        delete next[id];
+      });
+      return next;
     });
-    if (tabId !== "welcome") {
-      window.api.sshClose(tabId);
-    }
+    uniqueIds.forEach((id) => {
+      if (id !== "welcome") {
+        window.api.sshClose(id);
+      }
+    });
   }, [activeTab]);
+
+  const closeTab = useCallback((tabId: string) => {
+    closeTabsByIds([tabId]);
+  }, [closeTabsByIds]);
+
+  const closeOtherTabs = useCallback((tabId: string) => {
+    const otherIds = tabs.filter((tab) => tab.id !== tabId).map((tab) => tab.id);
+    closeTabsByIds(otherIds);
+  }, [tabs, closeTabsByIds]);
+
+  const closeTabsToRight = useCallback((tabId: string) => {
+    const index = tabs.findIndex((tab) => tab.id === tabId);
+    if (index === -1) return;
+    const idsToClose = tabs.slice(index + 1).map((tab) => tab.id);
+    closeTabsByIds(idsToClose);
+  }, [tabs, closeTabsByIds]);
+
+  const closeAllTabs = useCallback(() => {
+    closeTabsByIds(tabs.map((tab) => tab.id));
+  }, [tabs, closeTabsByIds]);
 
   const closeContextMenu = useCallback(() => {
     setContextMenuState(null);
+  }, []);
+
+  const closeTabContextMenu = useCallback(() => {
+    setTabContextMenuState(null);
   }, []);
 
   const reorderTabs = useCallback((sourceId: string, targetId: string) => {
@@ -289,6 +331,27 @@ export default function App() {
     setContextMenuState({ connection, x, y });
   }, []);
 
+  const handleTabContextMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>, tabId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const padding = 12;
+    const menuWidth = 220;
+    const menuHeight = 160;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x + menuWidth > viewportWidth - padding) {
+      x = viewportWidth - menuWidth - padding;
+    }
+    if (y + menuHeight > viewportHeight - padding) {
+      y = viewportHeight - menuHeight - padding;
+    }
+    x = Math.max(padding, x);
+    y = Math.max(padding, y);
+    setTabContextMenuState({ tabId, x, y });
+  }, []);
+
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
       const isModifierPressed = event.metaKey || event.ctrlKey;
@@ -339,16 +402,22 @@ export default function App() {
   }, [activeTab, tabs, tabConnections, closeTab, openNewConnectionEditor, startSshSession]);
 
   useEffect(() => {
-    if (!contextMenuState) return;
+    if (!contextMenuState && !tabContextMenuState) return;
     const handleMouseDown = (event: MouseEvent) => {
-      if (contextMenuRef.current && contextMenuRef.current.contains(event.target as Node)) {
+      const targetNode = event.target as Node;
+      if (contextMenuRef.current && contextMenuRef.current.contains(targetNode)) {
+        return;
+      }
+      if (tabContextMenuRef.current && tabContextMenuRef.current.contains(targetNode)) {
         return;
       }
       setContextMenuState(null);
+      setTabContextMenuState(null);
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setContextMenuState(null);
+        setTabContextMenuState(null);
       }
     };
     window.addEventListener("mousedown", handleMouseDown);
@@ -357,7 +426,7 @@ export default function App() {
       window.removeEventListener("mousedown", handleMouseDown);
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [contextMenuState]);
+  }, [contextMenuState, tabContextMenuState]);
 
   const activeStatus = useMemo(() => tabStatuses[activeTab], [tabStatuses, activeTab]);
 
@@ -422,6 +491,7 @@ export default function App() {
                   className={`h-full shrink-0 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700 ${
                     dragOverTabId === tab.id && draggingTabId !== tab.id ? "border-blue-400" : ""
                   } ${draggingTabId === tab.id ? "opacity-60" : ""}`}
+                  onContextMenu={(event) => handleTabContextMenu(event, tab.id)}
                 >
                   <span className="mr-2">{tab.label}</span>
                   <button
@@ -546,6 +616,69 @@ export default function App() {
               <Trash2 className="w-4 h-4" />
               <span>削除</span>
             </button>
+          </div>
+        </div>
+      )}
+      {tabContextMenuState && (
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          <div
+            ref={tabContextMenuRef}
+            className="absolute pointer-events-auto w-56 bg-[#1e293b] border border-gray-700 rounded-md shadow-lg py-1"
+            style={{ top: tabContextMenuState.y, left: tabContextMenuState.x }}
+          >
+            {(() => {
+              const tabIndex = tabs.findIndex((tab) => tab.id === tabContextMenuState.tabId);
+              const tabsToRight = tabIndex === -1 ? [] : tabs.slice(tabIndex + 1);
+              const otherTabs = tabs.filter((tab) => tab.id !== tabContextMenuState.tabId);
+              const closeDisabled = tabIndex === -1;
+              const closeAllDisabled = tabs.length === 0;
+              const closeRightDisabled = tabsToRight.length === 0;
+              const closeOthersDisabled = otherTabs.length === 0;
+              return (
+                <>
+                  <button
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 disabled:opacity-50 disabled:hover:bg-transparent"
+                    disabled={closeDisabled}
+                    onClick={() => {
+                      closeTab(tabContextMenuState.tabId);
+                      closeTabContextMenu();
+                    }}
+                  >
+                    タブを閉じる
+                  </button>
+                  <button
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 disabled:opacity-50 disabled:hover:bg-transparent"
+                    disabled={closeAllDisabled}
+                    onClick={() => {
+                      closeAllTabs();
+                      closeTabContextMenu();
+                    }}
+                  >
+                    全てのタブを閉じる
+                  </button>
+                  <button
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 disabled:opacity-50 disabled:hover:bg-transparent"
+                    disabled={closeRightDisabled}
+                    onClick={() => {
+                      closeTabsToRight(tabContextMenuState.tabId);
+                      closeTabContextMenu();
+                    }}
+                  >
+                    右のタブを閉じる
+                  </button>
+                  <button
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 disabled:opacity-50 disabled:hover:bg-transparent"
+                    disabled={closeOthersDisabled}
+                    onClick={() => {
+                      closeOtherTabs(tabContextMenuState.tabId);
+                      closeTabContextMenu();
+                    }}
+                  >
+                    他のタブを閉じる
+                  </button>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
