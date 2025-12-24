@@ -318,7 +318,7 @@ export default function App() {
         tabLabelSerialRef.current += 1;
       }
       const serial = assignedSerial;
-      const newTab: TabItem = { id: resolvedTabId, label: `${serial} - ${connection.host}` };
+      const newTab: TabItem = { id: resolvedTabId, label: `${serial} - ${connection.title}` };
       return [...prevTabs, newTab];
     });
     setActiveTab(resolvedTabId);
