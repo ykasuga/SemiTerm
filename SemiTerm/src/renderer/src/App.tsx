@@ -19,6 +19,11 @@ import appIcon from "../../../resources/icon.png?asset";
 
 type ConnectionContextMenuHandler = (event: ReactMouseEvent<HTMLDivElement>, connection: Connection) => void;
 
+type TabItem = {
+  id: string;
+  label: string;
+};
+
 // Sidebar item
 function ConnectionItem({ connection, onConnect, onContextMenu }: { connection: Connection, onConnect: (c: Connection) => void, onContextMenu: ConnectionContextMenuHandler }) {
   return (
@@ -38,7 +43,7 @@ function ConnectionItem({ connection, onConnect, onContextMenu }: { connection: 
 
 export default function App() {
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [tabs, setTabs] = useState([{ id: "welcome", label: "Welcome" }]);
+  const [tabs, setTabs] = useState<TabItem[]>([{ id: "welcome", label: "Welcome" }]);
   const [activeTab, setActiveTab] = useState("welcome");
   const [isEditorOpen, setEditorOpen] = useState(false);
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
@@ -52,6 +57,7 @@ export default function App() {
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; connection: Connection } | null>(null);
   const [tabContextMenuState, setTabContextMenuState] = useState<{ x: number; y: number; tabId: string } | null>(null);
   const tabSerialRef = useRef(0);
+  const tabLabelSerialRef = useRef(1);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const tabContextMenuRef = useRef<HTMLDivElement | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -164,12 +170,17 @@ export default function App() {
 
   const openSshTab = useCallback((connection: Connection, tabId?: string) => {
     const resolvedTabId = tabId || createTabId();
+    let assignedSerial: number | null = null;
     setTabs((prevTabs) => {
       if (prevTabs.find(tab => tab.id === resolvedTabId)) {
         return prevTabs;
       }
-      const newTabIndex = prevTabs.length;
-      const newTab = { id: resolvedTabId, label: `${newTabIndex} - ${connection.host}` };
+      if (assignedSerial === null) {
+        assignedSerial = tabLabelSerialRef.current;
+        tabLabelSerialRef.current += 1;
+      }
+      const serial = assignedSerial;
+      const newTab: TabItem = { id: resolvedTabId, label: `${serial} - ${connection.host}` };
       return [...prevTabs, newTab];
     });
     setActiveTab(resolvedTabId);
