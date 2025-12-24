@@ -11,8 +11,8 @@ import {
   DialogTitle,
 } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
-import { Plus, Server, Trash2, Pencil, X } from "lucide-react";
-import { Connection } from "./types";
+import { Plus, Server, Trash2, Pencil, X, Folder, FolderOpen, ChevronRight, FolderPlus } from "lucide-react";
+import { Connection, ConnectionStoreState } from "./types";
 import ConnectionEditor from "./ConnectionEditor";
 import TerminalComponent from "./Terminal";
 import appIcon from "../../../resources/icon.png?asset";
@@ -24,11 +24,106 @@ type TabItem = {
   label: string;
 };
 
+type ConnectionFolderNode = {
+  id: string;
+  name: string;
+  path: string;
+  children: ConnectionFolderNode[];
+  connections: Connection[];
+};
+
+type DragItem =
+  | { type: "connection"; id: string }
+  | { type: "folder"; path: string };
+
+const buildConnectionTree = (connections: Connection[], folders: string[]): ConnectionFolderNode => {
+  const root: ConnectionFolderNode = {
+    id: '__root__',
+    name: '',
+    path: '',
+    children: [],
+    connections: []
+  };
+  const folderMap = new Map<string, ConnectionFolderNode>();
+  folderMap.set('', root);
+
+  const ensureFolderNode = (path?: string): ConnectionFolderNode => {
+    if (!path) {
+      return root;
+    }
+    const segments = path
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    if (!segments.length) {
+      return root;
+    }
+    let parent = root;
+    let currentPath = '';
+    segments.forEach((segment) => {
+      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+      let node = folderMap.get(currentPath);
+      if (!node) {
+        node = {
+          id: currentPath,
+          name: segment,
+          path: currentPath,
+          children: [],
+          connections: []
+        };
+        folderMap.set(currentPath, node);
+        parent.children.push(node);
+      }
+      parent = node;
+    });
+    return parent;
+  };
+
+  folders.forEach((folderPath) => {
+    ensureFolderNode(folderPath);
+  });
+
+  connections.forEach((connection) => {
+    const targetNode = ensureFolderNode(connection.folderPath);
+    targetNode.connections.push(connection);
+  });
+
+  const sortNode = (node: ConnectionFolderNode) => {
+    node.children.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    node.connections.sort((a, b) => a.title.localeCompare(b.title, 'ja'));
+    node.children.forEach(sortNode);
+  };
+  sortNode(root);
+  return root;
+};
+
 // Sidebar item
-function ConnectionItem({ connection, onConnect, onContextMenu }: { connection: Connection, onConnect: (c: Connection) => void, onContextMenu: ConnectionContextMenuHandler }) {
+function ConnectionItem({
+  connection,
+  onConnect,
+  onContextMenu,
+  depth = 0,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
+  isDragging = false
+}: {
+  connection: Connection,
+  onConnect: (c: Connection) => void,
+  onContextMenu: ConnectionContextMenuHandler,
+  depth?: number,
+  draggable?: boolean,
+  onDragStart?: (event: ReactDragEvent<HTMLDivElement>) => void,
+  onDragEnd?: (event: ReactDragEvent<HTMLDivElement>) => void,
+  isDragging?: boolean
+}) {
   return (
     <div
-      className="py-2 px-3 group hover:bg-gray-700 rounded-md cursor-pointer flex items-center gap-3"
+      className={`py-2 px-3 group hover:bg-gray-700 rounded-md cursor-pointer flex items-center gap-3 ${isDragging ? "opacity-60" : ""}`}
+      style={{ marginLeft: depth * 16 }}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onClick={() => onConnect(connection)}
       onContextMenu={(event) => onContextMenu(event, connection)}
     >
@@ -43,6 +138,7 @@ function ConnectionItem({ connection, onConnect, onContextMenu }: { connection: 
 
 export default function App() {
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [folders, setFolders] = useState<string[]>([]);
   const [tabs, setTabs] = useState<TabItem[]>([{ id: "welcome", label: "Welcome" }]);
   const [activeTab, setActiveTab] = useState("welcome");
   const [isEditorOpen, setEditorOpen] = useState(false);
@@ -60,13 +156,52 @@ export default function App() {
   const tabLabelSerialRef = useRef(1);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const tabContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const listContextMenuRef = useRef<HTMLDivElement | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [listContextMenuState, setListContextMenuState] = useState<{ x: number; y: number } | null>(null);
+  const [isFolderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [folderNameInput, setFolderNameInput] = useState("");
+  const [draggingItem, setDraggingItem] = useState<DragItem | null>(null);
+  const [dropTargetFolder, setDropTargetFolder] = useState<string | null>(null);
+  const [isRootDropTarget, setRootDropTarget] = useState(false);
 
   const createTabId = () => {
     tabSerialRef.current += 1;
     return `ssh-tab-${tabSerialRef.current}`;
   };
+
+  const applyConnectionState = useCallback((state: ConnectionStoreState) => {
+    setConnections(state.connections);
+    setFolders(state.folders);
+  }, []);
+
+  const moveConnectionToFolder = useCallback(async (connectionId: string, targetFolderPath?: string) => {
+    try {
+      const state = await window.api.moveConnection(connectionId, targetFolderPath ?? null);
+      applyConnectionState(state);
+    } catch (error) {
+      console.error(error);
+      alert("接続先を移動できませんでした");
+    }
+  }, [applyConnectionState]);
+
+  const moveFolderToTarget = useCallback(async (folderPath: string, targetFolderPath?: string) => {
+    try {
+      const state = await window.api.moveFolder(folderPath, targetFolderPath ?? null);
+      applyConnectionState(state);
+    } catch (error) {
+      console.error(error);
+      alert("フォルダを移動できませんでした");
+    }
+  }, [applyConnectionState]);
+
+  const resetStructureDragState = useCallback(() => {
+    setDraggingItem(null);
+    setDropTargetFolder(null);
+    setRootDropTarget(false);
+  }, []);
 
   const startSshSession = useCallback((connection: Connection, tabId: string) => {
     setTabConnections((prev) => ({
@@ -89,8 +224,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    window.api.getConnections().then(setConnections);
-  }, []);
+    window.api.getConnections().then(applyConnectionState);
+  }, [applyConnectionState]);
 
   useEffect(() => {
     const handleError = (_event: unknown, id: string, error: { message: string }) => {
@@ -134,7 +269,8 @@ export default function App() {
 
   const handleSaveConnection = async (connection: Connection) => {
     const prevIds = new Set(connections.map((c) => c.id));
-    const updatedConnections = await window.api.saveConnection(connection);
+    const updatedState = await window.api.saveConnection(connection);
+    const updatedConnections = updatedState.connections;
     let savedId = connection.id;
     if (!savedId) {
       const created = updatedConnections.find(conn => !prevIds.has(conn.id));
@@ -147,14 +283,16 @@ export default function App() {
       return conn;
     });
     setConnections(enrichedConnections);
+    setFolders(updatedState.folders);
     setEditorOpen(false);
     setEditingConnection(null);
   };
 
   const handleDeleteConnection = async (id: string) => {
     if (confirm('この接続設定を削除してもよろしいですか？')) {
-      const updatedConnections = await window.api.deleteConnection(id);
-      setConnections(updatedConnections);
+      const updatedState = await window.api.deleteConnection(id);
+      setConnections(updatedState.connections);
+      setFolders(updatedState.folders);
     }
   };
 
@@ -287,6 +425,10 @@ export default function App() {
     setTabContextMenuState(null);
   }, []);
 
+  const closeListContextMenu = useCallback(() => {
+    setListContextMenuState(null);
+  }, []);
+
   const reorderTabs = useCallback((sourceId: string, targetId: string) => {
     if (sourceId === targetId) return;
     setTabs((prevTabs) => {
@@ -316,14 +458,85 @@ export default function App() {
     setDraggingTabId(null);
   }, [draggingTabId, reorderTabs]);
 
-  const resetDragState = useCallback(() => {
+  const resetTabDragState = useCallback(() => {
     setDragOverTabId(null);
     setDraggingTabId(null);
   }, []);
 
+  const toggleFolder = useCallback((path: string) => {
+    setExpandedFolders((prev) => ({
+      ...prev,
+      [path]: !(prev[path] ?? true)
+    }));
+  }, []);
+
+  const handleConnectionDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, connectionId: string) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", connectionId);
+    setDraggingItem({ type: "connection", id: connectionId });
+  }, []);
+
+  const handleFolderDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, folderPath: string) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", folderPath);
+    setDraggingItem({ type: "folder", path: folderPath });
+  }, []);
+
+  const handleStructureDragEnd = useCallback(() => {
+    resetStructureDragState();
+  }, [resetStructureDragState]);
+
+  const handleFolderDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>, folderPath: string) => {
+    if (!draggingItem) return;
+    if (draggingItem.type === "folder") {
+      if (folderPath === draggingItem.path || folderPath.startsWith(`${draggingItem.path}/`)) {
+        return;
+      }
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setDropTargetFolder(folderPath);
+    setRootDropTarget(false);
+  }, [draggingItem]);
+
+  const handleFolderDrop = useCallback(async (event: ReactDragEvent<HTMLDivElement>, folderPath: string) => {
+    if (!draggingItem) return;
+    if (draggingItem.type === "folder" && (folderPath === draggingItem.path || folderPath.startsWith(`${draggingItem.path}/`))) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (draggingItem.type === "connection") {
+      await moveConnectionToFolder(draggingItem.id, folderPath);
+    } else if (draggingItem.type === "folder") {
+      await moveFolderToTarget(draggingItem.path, folderPath);
+    }
+    resetStructureDragState();
+  }, [draggingItem, moveConnectionToFolder, moveFolderToTarget, resetStructureDragState]);
+
+  const handleRootDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
+    if (!draggingItem) return;
+    event.preventDefault();
+    setDropTargetFolder(null);
+    setRootDropTarget(true);
+  }, [draggingItem]);
+
+  const handleRootDrop = useCallback(async (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!draggingItem) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (draggingItem.type === "connection") {
+      await moveConnectionToFolder(draggingItem.id, undefined);
+    } else if (draggingItem.type === "folder") {
+      await moveFolderToTarget(draggingItem.path, undefined);
+    }
+    resetStructureDragState();
+  }, [draggingItem, moveConnectionToFolder, moveFolderToTarget, resetStructureDragState]);
+
   const handleConnectionContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>, connection: Connection) => {
     event.preventDefault();
     event.stopPropagation();
+    setListContextMenuState(null);
     const padding = 12;
     const menuWidth = 200;
     const menuHeight = 100;
@@ -345,6 +558,7 @@ export default function App() {
   const handleTabContextMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>, tabId: string) => {
     event.preventDefault();
     event.stopPropagation();
+    setListContextMenuState(null);
     const padding = 12;
     const menuWidth = 220;
     const menuHeight = 160;
@@ -362,6 +576,85 @@ export default function App() {
     y = Math.max(padding, y);
     setTabContextMenuState({ tabId, x, y });
   }, []);
+
+  const handleSidebarContextMenu = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenuState(null);
+    setTabContextMenuState(null);
+    const padding = 12;
+    const menuWidth = 220;
+    const menuHeight = 60;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x + menuWidth > viewportWidth - padding) {
+      x = viewportWidth - menuWidth - padding;
+    }
+    if (y + menuHeight > viewportHeight - padding) {
+      y = viewportHeight - menuHeight - padding;
+    }
+    x = Math.max(padding, x);
+    y = Math.max(padding, y);
+    setListContextMenuState({ x, y });
+  }, []);
+
+  const openFolderDialog = useCallback(() => {
+    closeListContextMenu();
+    setFolderDialogOpen(true);
+    setFolderNameInput("");
+  }, [closeListContextMenu]);
+
+  const closeFolderDialog = useCallback(() => {
+    setFolderDialogOpen(false);
+    setFolderNameInput("");
+  }, []);
+
+  const renderFolder = (node: ConnectionFolderNode, depth: number): JSX.Element => {
+    const isExpanded = expandedFolders[node.path] ?? true;
+    return (
+      <div key={node.path} className="space-y-1">
+        <div
+          className={`flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer hover:bg-gray-700 text-gray-200 ${dropTargetFolder === node.path ? "bg-gray-600/50" : ""} ${draggingItem?.type === "folder" && draggingItem.path === node.path ? "opacity-60" : ""}`}
+          style={{ marginLeft: depth * 16 }}
+          onClick={() => toggleFolder(node.path)}
+          onContextMenu={handleSidebarContextMenu}
+          draggable
+          onDragStart={(event) => handleFolderDragStart(event, node.path)}
+          onDragEnd={handleStructureDragEnd}
+          onDragOver={(event) => handleFolderDragOver(event, node.path)}
+          onDrop={(event) => handleFolderDrop(event, node.path)}
+        >
+          <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+          {isExpanded ? (
+            <FolderOpen className="w-4 h-4 text-gray-300" />
+          ) : (
+            <Folder className="w-4 h-4 text-gray-400" />
+          )}
+          <span className="text-sm font-medium">{node.name}</span>
+        </div>
+        {isExpanded && (
+          <div className="space-y-1">
+            {node.connections.map((conn) => (
+              <ConnectionItem
+                key={conn.id}
+                connection={conn}
+                onConnect={handleConnectRequest}
+                onContextMenu={handleConnectionContextMenu}
+                depth={depth + 1}
+                draggable
+                onDragStart={(event) => handleConnectionDragStart(event, conn.id)}
+                onDragEnd={handleStructureDragEnd}
+                isDragging={draggingItem?.type === "connection" && draggingItem.id === conn.id}
+              />
+            ))}
+            {node.children.map((child) => renderFolder(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
@@ -413,7 +706,7 @@ export default function App() {
   }, [activeTab, tabs, tabConnections, closeTab, openNewConnectionEditor, startSshSession]);
 
   useEffect(() => {
-    if (!contextMenuState && !tabContextMenuState) return;
+    if (!contextMenuState && !tabContextMenuState && !listContextMenuState) return;
     const handleMouseDown = (event: MouseEvent) => {
       const targetNode = event.target as Node;
       if (contextMenuRef.current && contextMenuRef.current.contains(targetNode)) {
@@ -422,13 +715,18 @@ export default function App() {
       if (tabContextMenuRef.current && tabContextMenuRef.current.contains(targetNode)) {
         return;
       }
+      if (listContextMenuRef.current && listContextMenuRef.current.contains(targetNode)) {
+        return;
+      }
       setContextMenuState(null);
       setTabContextMenuState(null);
+      setListContextMenuState(null);
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setContextMenuState(null);
         setTabContextMenuState(null);
+        setListContextMenuState(null);
       }
     };
     window.addEventListener("mousedown", handleMouseDown);
@@ -437,8 +735,31 @@ export default function App() {
       window.removeEventListener("mousedown", handleMouseDown);
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [contextMenuState, tabContextMenuState]);
+  }, [contextMenuState, tabContextMenuState, listContextMenuState]);
 
+  const sanitizedFolderInput = useMemo(() => {
+    return folderNameInput
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .join('/');
+  }, [folderNameInput]);
+
+  const isFolderNameValid = sanitizedFolderInput.length > 0;
+
+  const handleCreateFolder = useCallback(async () => {
+    if (!sanitizedFolderInput) return;
+    try {
+      const state = await window.api.createFolder(sanitizedFolderInput);
+      applyConnectionState(state);
+      closeFolderDialog();
+    } catch (error) {
+      console.error(error);
+      alert('フォルダを作成できませんでした');
+    }
+  }, [sanitizedFolderInput, applyConnectionState, closeFolderDialog]);
+
+  const connectionTree = useMemo(() => buildConnectionTree(connections, folders), [connections, folders]);
   const activeStatus = useMemo(() => tabStatuses[activeTab], [tabStatuses, activeTab]);
 
   return (
@@ -459,15 +780,25 @@ export default function App() {
           </Button>
         </div>
 
-        <div className="space-y-1 flex-1 overflow-y-auto">
-          {connections.map(conn => (
-            <ConnectionItem 
-              key={conn.id} 
+        <div
+          className={`space-y-1 flex-1 overflow-y-auto rounded-md ${isRootDropTarget ? "bg-gray-700/40" : ""}`}
+          onContextMenu={handleSidebarContextMenu}
+          onDragOver={handleRootDragOver}
+          onDrop={handleRootDrop}
+        >
+          {connectionTree.connections.map(conn => (
+            <ConnectionItem
+              key={conn.id}
               connection={conn}
               onConnect={handleConnectRequest}
               onContextMenu={handleConnectionContextMenu}
+              draggable
+              onDragStart={(event) => handleConnectionDragStart(event, conn.id)}
+              onDragEnd={handleStructureDragEnd}
+              isDragging={draggingItem?.type === "connection" && draggingItem.id === conn.id}
             />
           ))}
+          {connectionTree.children.map(folder => renderFolder(folder, 0))}
         </div>
 
         <div className="text-xs text-gray-500 mt-4">SemiTerm v0.1.0</div>
@@ -498,7 +829,7 @@ export default function App() {
                     event.preventDefault();
                     handleTabDrop(tab.id);
                   }}
-                  onDragEnd={resetDragState}
+                  onDragEnd={resetTabDragState}
                   className={`h-full shrink-0 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700 ${
                     dragOverTabId === tab.id && draggingTabId !== tab.id ? "border-blue-400" : ""
                   } ${draggingTabId === tab.id ? "opacity-60" : ""}`}
@@ -630,6 +961,23 @@ export default function App() {
           </div>
         </div>
       )}
+      {listContextMenuState && (
+        <div className="fixed inset-0 z-40 pointer-events-none">
+          <div
+            ref={listContextMenuRef}
+            className="absolute pointer-events-auto w-48 bg-[#1e293b] border border-gray-700 rounded-md shadow-lg py-1"
+            style={{ top: listContextMenuState.y, left: listContextMenuState.x }}
+          >
+            <button
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 flex items-center space-x-2"
+              onClick={openFolderDialog}
+            >
+              <FolderPlus className="w-4 h-4" />
+              <span>フォルダを追加</span>
+            </button>
+          </div>
+        </div>
+      )}
       {tabContextMenuState && (
         <div className="fixed inset-0 z-50 pointer-events-none">
           <div
@@ -692,6 +1040,36 @@ export default function App() {
             })()}
           </div>
         </div>
+      )}
+      {isFolderDialogOpen && (
+        <Dialog open onOpenChange={(open) => !open && closeFolderDialog()}>
+          <DialogContent className="sm:max-w-[400px] bg-[#1e293b] text-white border-gray-700">
+            <DialogHeader>
+              <DialogTitle>フォルダを作成</DialogTitle>
+              <DialogDescription>新しく追加するフォルダ名を入力してください。階層は / で区切れます。</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Input
+                value={folderNameInput}
+                onChange={(event) => setFolderNameInput(event.target.value)}
+                placeholder="例: Production/DB"
+                className="bg-gray-800 border-gray-600"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" className="border-white text-white hover:bg-white/10" onClick={closeFolderDialog}>キャンセル</Button>
+              <Button
+                variant="outline"
+                className="border-white text-white hover:bg-white/10 disabled:opacity-50"
+                onClick={handleCreateFolder}
+                disabled={!isFolderNameValid}
+              >
+                作成
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
       {isEditorOpen && <ConnectionEditor connection={editingConnection} onSave={handleSaveConnection} onCancel={() => setEditorOpen(false)} />}
       {pendingConnection && (

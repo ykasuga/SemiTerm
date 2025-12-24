@@ -2,6 +2,7 @@
 export interface Connection {
   id: string;
   title: string;
+  folderPath?: string;
   host: string;
   port: number;
   username: string;
@@ -12,4 +13,9 @@ export interface Connection {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ConnectionStoreState {
+  connections: Connection[];
+  folders: string[];
 }

@@ -3,7 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
-import type { Connection } from '../renderer/src/types'
+import type { Connection, ConnectionStoreState } from '../renderer/src/types'
 import { v4 as uuidv4 } from 'uuid'
 import log from 'electron-log'
 import { Client, ClientChannel, ConnectConfig } from 'ssh2'
@@ -137,9 +137,10 @@ app.whenReady().then(() => {
   // --- IPC Handlers ---
 
   // Initialize electron-store
-  const store = new Store<{ connections: Connection[] }>({
+  const store = new Store<{ connections: Connection[], folders: string[] }>({
     defaults: {
-      connections: []
+      connections: [],
+      folders: []
     },
     // As per design doc, save to standard user data folder
     // electron-store handles this by default.
@@ -149,6 +150,16 @@ app.whenReady().then(() => {
   });
 
   // DB Handlers
+  const normalizeFolderPath = (folderPath?: string): string | undefined => {
+    if (!folderPath) return undefined
+    const normalized = folderPath
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .join('/')
+    return normalized || undefined
+  }
+
   const sanitizeConnection = (connection: Connection): Connection => {
     const sanitizedAuth =
       connection.auth.type === 'password'
@@ -156,41 +167,157 @@ app.whenReady().then(() => {
         : { type: 'key' as const, keyPath: connection.auth.keyPath }
     return {
       ...connection,
+      folderPath: normalizeFolderPath(connection.folderPath),
       auth: sanitizedAuth
     }
   }
 
-  ipcMain.handle('db:get-connections', () => {
+  const sanitizeFolderList = (folders: string[]): string[] => {
+    const normalizedSet = new Set<string>()
+    folders.forEach((folderPath) => {
+      const normalized = normalizeFolderPath(folderPath)
+      if (!normalized) {
+        return
+      }
+      const segments = normalized.split('/')
+      let current = ''
+      segments.forEach((segment) => {
+        current = current ? `${current}/${segment}` : segment
+        normalizedSet.add(current)
+      })
+    })
+    return Array.from(normalizedSet).sort((a, b) => a.localeCompare(b, 'ja'))
+  }
+
+  const addFolderPath = (folderPath?: string): void => {
+    const normalized = normalizeFolderPath(folderPath)
+    if (!normalized) return
+    const existingFolders = store.get('folders', [])
+    const updatedFolders = sanitizeFolderList([...existingFolders, normalized])
+    store.set('folders', updatedFolders)
+  }
+
+  const buildStoreState = (): ConnectionStoreState => {
     const connections = store.get('connections', [])
-    const sanitized = connections.map((conn) => sanitizeConnection(conn))
-    store.set('connections', sanitized)
-    return sanitized
+    const sanitizedConnections = connections.map((conn) => sanitizeConnection(conn))
+    const sanitizedFolders = sanitizeFolderList(store.get('folders', []))
+    store.set('connections', sanitizedConnections)
+    store.set('folders', sanitizedFolders)
+    return {
+      connections: sanitizedConnections,
+      folders: sanitizedFolders
+    }
+  }
+
+  const replaceFolderPath = (value: string, sourcePath: string, destinationPath: string): string => {
+    if (value === sourcePath) return destinationPath
+    const prefix = `${sourcePath}/`
+    if (value.startsWith(prefix)) {
+      const suffix = value.slice(prefix.length)
+      return `${destinationPath}/${suffix}`
+    }
+    return value
+  }
+
+  ipcMain.handle('db:get-connections', () => {
+    return buildStoreState()
   });
 
   ipcMain.handle('db:save-connection', (_event, connection: Connection) => {
-    const connections = store.get('connections', []);
-    const now = new Date().toISOString();
+    const connections = store.get('connections', [])
+    const now = new Date().toISOString()
     const sanitizedIncoming = sanitizeConnection(connection)
     if (connection.id) {
       // Update existing
-      const index = connections.findIndex(c => c.id === connection.id);
+      const index = connections.findIndex(c => c.id === connection.id)
       if (index !== -1) {
-        connections[index] = { ...connections[index], ...sanitizedIncoming, updatedAt: now };
+        connections[index] = { ...connections[index], ...sanitizedIncoming, updatedAt: now }
       }
     } else {
       // Create new
-      const newConnection = { ...sanitizedIncoming, id: uuidv4(), createdAt: now, updatedAt: now };
-      connections.push(newConnection);
+      const newConnection = { ...sanitizedIncoming, id: uuidv4(), createdAt: now, updatedAt: now }
+      connections.push(newConnection)
     }
-    store.set('connections', connections);
-    return connections.map((conn) => sanitizeConnection(conn));
+    store.set('connections', connections)
+    addFolderPath(sanitizedIncoming.folderPath)
+    return buildStoreState()
   });
 
   ipcMain.handle('db:delete-connection', (_event, id: string) => {
-    let connections = store.get('connections', []);
-    connections = connections.filter(c => c.id !== id);
-    store.set('connections', connections);
-    return connections;
+    let connections = store.get('connections', [])
+    connections = connections.filter(c => c.id !== id)
+    store.set('connections', connections)
+    return buildStoreState()
+  });
+
+  ipcMain.handle('db:create-folder', (_event, folderPath: string) => {
+    addFolderPath(folderPath)
+    return buildStoreState()
+  });
+
+  ipcMain.handle('db:move-connection', (_event, payload: { id: string, folderPath: string | null }) => {
+    const { id, folderPath } = payload
+    const connections = store.get('connections', [])
+    const index = connections.findIndex((conn) => conn.id === id)
+    if (index === -1) {
+      return buildStoreState()
+    }
+    const normalizedFolder = normalizeFolderPath(folderPath || undefined)
+    const now = new Date().toISOString()
+    connections[index] = {
+      ...connections[index],
+      folderPath: normalizedFolder,
+      updatedAt: now
+    }
+    store.set('connections', connections)
+    if (normalizedFolder) {
+      addFolderPath(normalizedFolder)
+    }
+    return buildStoreState()
+  });
+
+  ipcMain.handle('db:move-folder', (_event, payload: { sourcePath: string, targetFolderPath: string | null }) => {
+    const { sourcePath, targetFolderPath } = payload
+    const normalizedSource = normalizeFolderPath(sourcePath)
+    if (!normalizedSource) {
+      return buildStoreState()
+    }
+    const normalizedTargetParent = normalizeFolderPath(targetFolderPath || undefined)
+    if (normalizedTargetParent && (normalizedTargetParent === normalizedSource || normalizedTargetParent.startsWith(`${normalizedSource}/`))) {
+      return buildStoreState()
+    }
+    const folderName = normalizedSource.split('/').pop() || normalizedSource
+    const destinationPath = normalizedTargetParent ? `${normalizedTargetParent}/${folderName}` : folderName
+    const normalizedDestination = normalizeFolderPath(destinationPath)
+    if (!normalizedDestination || normalizedDestination === normalizedSource) {
+      return buildStoreState()
+    }
+
+    const connections = store.get('connections', []).map((conn) => {
+      if (!conn.folderPath) return conn
+      if (conn.folderPath === normalizedSource || conn.folderPath.startsWith(`${normalizedSource}/`)) {
+        const newPath = replaceFolderPath(conn.folderPath, normalizedSource, normalizedDestination)
+        return { ...conn, folderPath: newPath }
+      }
+      return conn
+    })
+    store.set('connections', connections)
+
+    const folders = store.get('folders', [])
+    const updatedFolders = folders
+      .map((folderEntry) => {
+        const normalizedEntry = normalizeFolderPath(folderEntry)
+        if (!normalizedEntry) return null
+        if (normalizedEntry === normalizedSource || normalizedEntry.startsWith(`${normalizedSource}/`)) {
+          return replaceFolderPath(normalizedEntry, normalizedSource, normalizedDestination)
+        }
+        return normalizedEntry
+      })
+      .filter((value): value is string => Boolean(value))
+
+    store.set('folders', updatedFolders)
+    addFolderPath(normalizedDestination)
+    return buildStoreState()
   });
 
   ipcMain.handle('dialog:open-key-file', async () => {

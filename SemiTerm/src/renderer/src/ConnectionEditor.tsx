@@ -27,6 +27,7 @@ interface ConnectionEditorProps {
 
 const initialConnectionState: Omit<Connection, 'id' | 'createdAt' | 'updatedAt'> = {
   title: '',
+  folderPath: '',
   host: '',
   port: 22,
   username: '',
@@ -41,6 +42,7 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
     if (connection) {
       setFormData({
         title: connection.title,
+        folderPath: connection.folderPath || '',
         host: connection.host,
         port: connection.port,
         username: connection.username,
@@ -90,6 +92,7 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
   const handleSave = () => {
     onSave({
       ...formData,
+      folderPath: (formData.folderPath || '').split('/').map((segment) => segment.trim()).filter(Boolean).join('/'),
       id: connection?.id || '', // ID is handled by main process if empty
       createdAt: connection?.createdAt || '',
       updatedAt: connection?.updatedAt || '',
@@ -109,6 +112,10 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
           <div className="grid w-full items-center gap-1.5">
             <Label htmlFor="title">接続名</Label>
             <Input id="title" name="title" value={formData.title} onChange={handleChange} className="bg-gray-800 border-gray-600" />
+          </div>
+          <div className="grid w-full items-center gap-1.5">
+            <Label htmlFor="folderPath">フォルダ (例: Production/DB)</Label>
+            <Input id="folderPath" name="folderPath" placeholder="任意" value={formData.folderPath || ''} onChange={handleChange} className="bg-gray-800 border-gray-600" />
           </div>
           <div className="grid w-full items-center gap-1.5">
             <Label htmlFor="host">Host</Label>

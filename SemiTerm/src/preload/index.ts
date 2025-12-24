@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { Connection } from '../renderer/src/types'
+import type { Connection, ConnectionStoreState } from '../renderer/src/types'
 
 // Custom APIs for renderer
 const api = {
@@ -13,9 +13,14 @@ const api = {
     ipcRenderer.on('ssh:close', (_event: IpcRendererEvent, id: string) => callback(id)),
 
   // From Renderer to Main
-  getConnections: (): Promise<Connection[]> => ipcRenderer.invoke('db:get-connections'),
-  saveConnection: (connection: Connection): Promise<Connection[]> => ipcRenderer.invoke('db:save-connection', connection),
-  deleteConnection: (id: string): Promise<Connection[]> => ipcRenderer.invoke('db:delete-connection', id),
+  getConnections: (): Promise<ConnectionStoreState> => ipcRenderer.invoke('db:get-connections'),
+  saveConnection: (connection: Connection): Promise<ConnectionStoreState> => ipcRenderer.invoke('db:save-connection', connection),
+  deleteConnection: (id: string): Promise<ConnectionStoreState> => ipcRenderer.invoke('db:delete-connection', id),
+  createFolder: (folderPath: string): Promise<ConnectionStoreState> => ipcRenderer.invoke('db:create-folder', folderPath),
+  moveConnection: (id: string, folderPath: string | null): Promise<ConnectionStoreState> =>
+    ipcRenderer.invoke('db:move-connection', { id, folderPath }),
+  moveFolder: (sourcePath: string, targetFolderPath: string | null): Promise<ConnectionStoreState> =>
+    ipcRenderer.invoke('db:move-folder', { sourcePath, targetFolderPath }),
   openKeyFileDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:open-key-file'),
   
   // SSH Operations

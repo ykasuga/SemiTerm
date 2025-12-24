@@ -1,5 +1,5 @@
 import type { IpcRendererEvent } from 'electron';
-import type { Connection } from './types';
+import type { Connection, ConnectionStoreState } from './types';
 
 declare global {
   interface Window {
@@ -18,9 +18,12 @@ declare global {
       onSshClose: (callback: (id: string) => void) => void;
 
       // From Renderer to Main
-      getConnections: () => Promise<Connection[]>;
-      saveConnection: (connection: Connection) => Promise<Connection[]>;
-      deleteConnection: (id: string) => Promise<Connection[]>;
+      getConnections: () => Promise<ConnectionStoreState>;
+      saveConnection: (connection: Connection) => Promise<ConnectionStoreState>;
+      deleteConnection: (id: string) => Promise<ConnectionStoreState>;
+      createFolder: (folderPath: string) => Promise<ConnectionStoreState>;
+      moveConnection: (id: string, folderPath: string | null) => Promise<ConnectionStoreState>;
+      moveFolder: (sourcePath: string, targetFolderPath: string | null) => Promise<ConnectionStoreState>;
       openKeyFileDialog: () => Promise<string | null>;
       
       // SSH Operations
