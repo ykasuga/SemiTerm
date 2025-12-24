@@ -10,3 +10,21 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+.scrollable-tabs {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+.scrollable-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.scrollable-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollable-tabs::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 9999px;
+}

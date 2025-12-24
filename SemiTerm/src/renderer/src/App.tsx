@@ -394,9 +394,10 @@ export default function App() {
       </div>
 
       {/* Main */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <div className="h-12 bg-[#1e293b] border-b border-gray-700 flex items-center px-4">
-            <TabsList className="bg-transparent h-full p-0">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+        <div className="h-12 bg-[#1e293b] border-b border-gray-700 flex items-center px-4 overflow-hidden">
+          <div className="w-full h-full overflow-x-auto overflow-y-hidden scrollable-tabs">
+            <TabsList className="bg-transparent h-full p-0 flex-nowrap w-max">
               {tabs.map((tab) => (
                 <TabsTrigger
                   key={tab.id}
@@ -418,7 +419,7 @@ export default function App() {
                     handleTabDrop(tab.id);
                   }}
                   onDragEnd={resetDragState}
-                  className={`h-full rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700 ${
+                  className={`h-full shrink-0 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700 ${
                     dragOverTabId === tab.id && draggingTabId !== tab.id ? "border-blue-400" : ""
                   } ${draggingTabId === tab.id ? "opacity-60" : ""}`}
                 >
@@ -436,6 +437,7 @@ export default function App() {
                 </TabsTrigger>
               ))}
             </TabsList>
+          </div>
         </div>
 
         <div className="flex-1 bg-[#0f172a] overflow-y-hidden relative">
