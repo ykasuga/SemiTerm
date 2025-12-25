@@ -119,7 +119,11 @@ function ConnectionItem({
 }) {
   return (
     <div
-      className={`py-2 px-3 group hover:bg-gray-700 rounded-md cursor-pointer flex items-center gap-3 ${isDragging ? "opacity-60" : ""}`}
+      className={`py-2 px-3 group hover:bg-gray-700 rounded-md cursor-pointer flex items-center gap-3 transition-all duration-150 ${
+        isDragging
+          ? "opacity-40 scale-95 ring-2 ring-blue-400 bg-blue-500/10"
+          : ""
+      }`}
       style={{ marginLeft: depth * 16 }}
       draggable={draggable}
       onDragStart={onDragStart}
@@ -613,10 +617,27 @@ export default function App() {
 
   const renderFolder = (node: ConnectionFolderNode, depth: number): JSX.Element => {
     const isExpanded = expandedFolders[node.path] ?? true;
+    
+    // 無効なドロップターゲットかどうかを判定
+    const isInvalidDropTarget = draggingItem?.type === "folder" &&
+      (node.path === draggingItem.path || node.path.startsWith(`${draggingItem.path}/`));
+    
     return (
       <div key={node.path} className="space-y-1">
         <div
-          className={`flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer hover:bg-gray-700 text-gray-200 ${dropTargetFolder === node.path ? "bg-gray-600/50" : ""} ${draggingItem?.type === "folder" && draggingItem.path === node.path ? "opacity-60" : ""}`}
+          className={`flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer text-gray-200 transition-all duration-150 ${
+            dropTargetFolder === node.path
+              ? "bg-blue-500/20 border-2 border-blue-400 ring-2 ring-blue-400/50"
+              : "border-2 border-transparent hover:bg-gray-700"
+          } ${
+            isInvalidDropTarget
+              ? "opacity-40 cursor-not-allowed bg-red-500/10"
+              : ""
+          } ${
+            draggingItem?.type === "folder" && draggingItem.path === node.path
+              ? "opacity-60"
+              : ""
+          }`}
           style={{ marginLeft: depth * 16 }}
           onClick={() => toggleFolder(node.path)}
           onContextMenu={handleSidebarContextMenu}
@@ -781,7 +802,11 @@ export default function App() {
         </div>
 
         <div
-          className={`space-y-1 flex-1 overflow-y-auto rounded-md ${isRootDropTarget ? "bg-gray-700/40" : ""}`}
+          className={`space-y-1 flex-1 overflow-y-auto rounded-md transition-all duration-150 ${
+            isRootDropTarget
+              ? "bg-blue-500/10 border-2 border-dashed border-blue-400"
+              : "border-2 border-transparent"
+          }`}
           onContextMenu={handleSidebarContextMenu}
           onDragOver={handleRootDragOver}
           onDrop={handleRootDrop}
