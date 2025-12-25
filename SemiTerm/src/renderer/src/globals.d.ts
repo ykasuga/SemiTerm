@@ -24,6 +24,8 @@ declare global {
       createFolder: (folderPath: string) => Promise<ConnectionStoreState>;
       moveConnection: (id: string, folderPath: string | null) => Promise<ConnectionStoreState>;
       moveFolder: (sourcePath: string, targetFolderPath: string | null) => Promise<ConnectionStoreState>;
+      reorderConnections: (connectionIds: string[], folderPath?: string) => Promise<ConnectionStoreState>;
+      reorderFolders: (folderPaths: string[], parentFolderPath?: string) => Promise<ConnectionStoreState>;
       openKeyFileDialog: () => Promise<string | null>;
       
       // SSH Operations

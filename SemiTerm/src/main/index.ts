@@ -3,7 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
-import type { Connection, ConnectionStoreState } from '../renderer/src/types'
+import type { Connection, ConnectionStoreState, FolderInfo } from '../renderer/src/types'
 import { v4 as uuidv4 } from 'uuid'
 import log from 'electron-log'
 import { Client, ClientChannel, ConnectConfig } from 'ssh2'
@@ -137,10 +137,11 @@ app.whenReady().then(() => {
   // --- IPC Handlers ---
 
   // Initialize electron-store
-  const store = new Store<{ connections: Connection[], folders: string[] }>({
+  const store = new Store<{ connections: Connection[], folders: string[], folderInfos: FolderInfo[] }>({
     defaults: {
       connections: [],
-      folders: []
+      folders: [],
+      folderInfos: []
     },
     // As per design doc, save to standard user data folder
     // electron-store handles this by default.
@@ -195,17 +196,39 @@ app.whenReady().then(() => {
     const existingFolders = store.get('folders', [])
     const updatedFolders = sanitizeFolderList([...existingFolders, normalized])
     store.set('folders', updatedFolders)
+    
+    // folderInfosも更新
+    const existingInfos = store.get('folderInfos', [])
+    const infoExists = existingInfos.some(info => info.path === normalized)
+    if (!infoExists) {
+      const newInfos = [...existingInfos, { path: normalized }]
+      store.set('folderInfos', newInfos)
+    }
   }
 
   const buildStoreState = (): ConnectionStoreState => {
     const connections = store.get('connections', [])
     const sanitizedConnections = connections.map((conn) => sanitizeConnection(conn))
     const sanitizedFolders = sanitizeFolderList(store.get('folders', []))
+    const folderInfos = store.get('folderInfos', [])
+    
+    // folderInfosを正規化（存在しないフォルダを削除）
+    const validInfos = folderInfos.filter(info => sanitizedFolders.includes(info.path))
+    
+    // 新しいフォルダにはinfoを追加
+    const infoMap = new Map(validInfos.map(info => [info.path, info]))
+    const updatedInfos = sanitizedFolders.map(path =>
+      infoMap.get(path) || { path }
+    )
+    
     store.set('connections', sanitizedConnections)
     store.set('folders', sanitizedFolders)
+    store.set('folderInfos', updatedInfos)
+    
     return {
       connections: sanitizedConnections,
-      folders: sanitizedFolders
+      folders: sanitizedFolders,
+      folderInfos: updatedInfos
     }
   }
 
@@ -317,6 +340,69 @@ app.whenReady().then(() => {
 
     store.set('folders', updatedFolders)
     addFolderPath(normalizedDestination)
+    return buildStoreState()
+  });
+
+  ipcMain.handle('db:reorder-connections', (_event, payload: { connectionIds: string[], folderPath?: string }) => {
+    const { connectionIds, folderPath } = payload
+    const normalizedFolder = normalizeFolderPath(folderPath)
+    const connections = store.get('connections', [])
+    const now = new Date().toISOString()
+    
+    // 指定されたフォルダ内の接続のみを並び替え
+    const targetConnections = connections.filter(conn => {
+      const connFolder = normalizeFolderPath(conn.folderPath)
+      return connFolder === normalizedFolder
+    })
+    
+    // 新しい順序を設定
+    const orderMap = new Map<string, number>()
+    connectionIds.forEach((id, index) => {
+      orderMap.set(id, index)
+    })
+    
+    // 接続を更新
+    const updatedConnections = connections.map(conn => {
+      if (orderMap.has(conn.id)) {
+        return {
+          ...conn,
+          order: orderMap.get(conn.id),
+          updatedAt: now
+        }
+      }
+      return conn
+    })
+    
+    store.set('connections', updatedConnections)
+    return buildStoreState()
+  });
+
+  ipcMain.handle('db:reorder-folders', (_event, payload: { folderPaths: string[], parentFolderPath?: string }) => {
+    const { folderPaths, parentFolderPath } = payload
+    const normalizedParent = normalizeFolderPath(parentFolderPath)
+    const folderInfos = store.get('folderInfos', [])
+    
+    // 新しい順序を設定
+    const orderMap = new Map<string, number>()
+    folderPaths.forEach((path, index) => {
+      const normalized = normalizeFolderPath(path)
+      if (normalized) {
+        orderMap.set(normalized, index)
+      }
+    })
+    
+    // フォルダ情報を更新
+    const updatedInfos = folderInfos.map(info => {
+      if (orderMap.has(info.path)) {
+        return {
+          ...info,
+          order: orderMap.get(info.path)
+        }
+      }
+      return info
+    })
+    
+    store.set('folderInfos', updatedInfos)
     return buildStoreState()
   });
 

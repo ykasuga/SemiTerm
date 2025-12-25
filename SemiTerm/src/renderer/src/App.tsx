@@ -12,7 +12,7 @@ import {
 } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
 import { Plus, Server, Trash2, Pencil, X, Folder, FolderOpen, ChevronRight, FolderPlus } from "lucide-react";
-import { Connection, ConnectionStoreState } from "./types";
+import { Connection, ConnectionStoreState, FolderInfo } from "./types";
 import ConnectionEditor from "./ConnectionEditor";
 import TerminalComponent from "./Terminal";
 import appIcon from "../../../resources/icon.png?asset";
@@ -41,7 +41,7 @@ type DropPosition = {
   targetId: string; // connection.id or folder.path
 } | null;
 
-const buildConnectionTree = (connections: Connection[], folders: string[]): ConnectionFolderNode => {
+const buildConnectionTree = (connections: Connection[], folders: string[], folderInfos?: FolderInfo[]): ConnectionFolderNode => {
   const root: ConnectionFolderNode = {
     id: '__root__',
     name: '',
@@ -94,8 +94,34 @@ const buildConnectionTree = (connections: Connection[], folders: string[]): Conn
   });
 
   const sortNode = (node: ConnectionFolderNode) => {
-    node.children.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-    node.connections.sort((a, b) => a.title.localeCompare(b.title, 'ja'));
+    // フォルダをorder順にソート（orderがない場合はname順）
+    const folderOrderMap = new Map<string, number>();
+    if (folderInfos) {
+      folderInfos.forEach(info => {
+        if (info.order !== undefined) {
+          folderOrderMap.set(info.path, info.order);
+        }
+      });
+    }
+    
+    node.children.sort((a, b) => {
+      const orderA = folderOrderMap.get(a.path) ?? Number.MAX_SAFE_INTEGER;
+      const orderB = folderOrderMap.get(b.path) ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return a.name.localeCompare(b.name, 'ja');
+    });
+    
+    // 接続はorder順にソート（orderがない場合はtitle順）
+    node.connections.sort((a, b) => {
+      const orderA = a.order ?? Number.MAX_SAFE_INTEGER;
+      const orderB = b.order ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return a.title.localeCompare(b.title, 'ja');
+    });
     node.children.forEach(sortNode);
   };
   sortNode(root);
@@ -183,6 +209,7 @@ function ConnectionItem({
 export default function App() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
+  const [folderInfos, setFolderInfos] = useState<FolderInfo[]>([]);
   const [tabs, setTabs] = useState<TabItem[]>([{ id: "welcome", label: "Welcome" }]);
   const [activeTab, setActiveTab] = useState("welcome");
   const [isEditorOpen, setEditorOpen] = useState(false);
@@ -220,6 +247,7 @@ export default function App() {
   const applyConnectionState = useCallback((state: ConnectionStoreState) => {
     setConnections(state.connections);
     setFolders(state.folders);
+    setFolderInfos(state.folderInfos || []);
   }, []);
 
   const moveConnectionToFolder = useCallback(async (connectionId: string, targetFolderPath?: string) => {
@@ -551,9 +579,6 @@ export default function App() {
     event.preventDefault();
     event.stopPropagation();
     
-    // 現在は接続アイテムのドロップ位置（before/after）を視覚的に表示するのみで、
-    // 実際の並び替え機能は未実装のため、親フォルダへの移動のみを行う
-    
     // ターゲット接続の親フォルダを取得
     const targetConnection = connections.find(c => c.id === targetConnectionId);
     if (!targetConnection) return;
@@ -561,13 +586,60 @@ export default function App() {
     const targetFolderPath = targetConnection.folderPath;
     
     if (draggingItem.type === "connection") {
-      await moveConnectionToFolder(draggingItem.id, targetFolderPath);
+      const draggedConnection = connections.find(c => c.id === draggingItem.id);
+      if (!draggedConnection) return;
+      
+      const draggedFolderPath = draggedConnection.folderPath;
+      const normalizedDraggedFolder = draggedFolderPath || undefined;
+      const normalizedTargetFolder = targetFolderPath || undefined;
+      
+      // 同じフォルダ内での並び替え
+      if (normalizedDraggedFolder === normalizedTargetFolder) {
+        // 同じフォルダ内の接続を取得
+        const folderConnections = connections
+          .filter(c => (c.folderPath || undefined) === normalizedTargetFolder)
+          .sort((a, b) => {
+            const orderA = a.order ?? Number.MAX_SAFE_INTEGER;
+            const orderB = b.order ?? Number.MAX_SAFE_INTEGER;
+            if (orderA !== orderB) {
+              return orderA - orderB;
+            }
+            return a.title.localeCompare(b.title, 'ja');
+          });
+        
+        // ドラッグ元を除外
+        const withoutDragged = folderConnections.filter(c => c.id !== draggingItem.id);
+        
+        // ターゲットのインデックスを取得
+        const targetIndex = withoutDragged.findIndex(c => c.id === targetConnectionId);
+        if (targetIndex === -1) return;
+        
+        // before/afterに応じて挿入位置を決定
+        const insertIndex = dropPosition.type === 'before' ? targetIndex : targetIndex + 1;
+        
+        // 新しい順序で配列を構築
+        const reordered = [
+          ...withoutDragged.slice(0, insertIndex),
+          draggedConnection,
+          ...withoutDragged.slice(insertIndex)
+        ];
+        
+        // 新しい順序のIDリストを作成
+        const newOrder = reordered.map(c => c.id);
+        
+        // バックエンドに並び替えを通知
+        const state = await window.api.reorderConnections(newOrder, normalizedTargetFolder);
+        applyConnectionState(state);
+      } else {
+        // 異なるフォルダへの移動
+        await moveConnectionToFolder(draggingItem.id, targetFolderPath);
+      }
     } else if (draggingItem.type === "folder") {
       await moveFolderToTarget(draggingItem.path, targetFolderPath);
     }
     
     resetStructureDragState();
-  }, [draggingItem, dropPosition, connections, moveConnectionToFolder, moveFolderToTarget, resetStructureDragState]);
+  }, [draggingItem, dropPosition, connections, moveConnectionToFolder, moveFolderToTarget, resetStructureDragState, applyConnectionState]);
 
   const handleFolderDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, folderPath: string) => {
     event.dataTransfer.effectAllowed = "move";
@@ -585,9 +657,37 @@ export default function App() {
       if (folderPath === draggingItem.path || folderPath.startsWith(`${draggingItem.path}/`)) {
         return;
       }
+      
+      // 同じ親フォルダ内のフォルダ同士の並び替えを検出
+      const draggedParent = draggingItem.path.includes('/')
+        ? draggingItem.path.substring(0, draggingItem.path.lastIndexOf('/'))
+        : '';
+      const targetParent = folderPath.includes('/')
+        ? folderPath.substring(0, folderPath.lastIndexOf('/'))
+        : '';
+      
+      if (draggedParent === targetParent) {
+        // 同じ親フォルダ内での並び替え - before/after位置を設定
+        const rect = event.currentTarget.getBoundingClientRect();
+        const mouseY = event.clientY - rect.top;
+        const height = rect.height;
+        
+        if (mouseY < height / 2) {
+          setDropPosition({ type: 'before', targetId: folderPath });
+        } else {
+          setDropPosition({ type: 'after', targetId: folderPath });
+        }
+        setDropTargetFolder(null);
+        setRootDropTarget(false);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
     }
+    
     event.preventDefault();
     event.stopPropagation();
+    setDropPosition(null);
     setDropTargetFolder(folderPath);
     setRootDropTarget(false);
   }, [draggingItem]);
@@ -599,13 +699,68 @@ export default function App() {
     }
     event.preventDefault();
     event.stopPropagation();
+    
     if (draggingItem.type === "connection") {
       await moveConnectionToFolder(draggingItem.id, folderPath);
     } else if (draggingItem.type === "folder") {
-      await moveFolderToTarget(draggingItem.path, folderPath);
+      // 同じ親フォルダ内での並び替えかチェック
+      const draggedParent = draggingItem.path.includes('/')
+        ? draggingItem.path.substring(0, draggingItem.path.lastIndexOf('/'))
+        : '';
+      const targetParent = folderPath.includes('/')
+        ? folderPath.substring(0, folderPath.lastIndexOf('/'))
+        : '';
+      
+      if (draggedParent === targetParent && dropPosition) {
+        // 同じ親フォルダ内のフォルダを取得
+        const parentFolders = folders
+          .filter(f => {
+            const parent = f.includes('/') ? f.substring(0, f.lastIndexOf('/')) : '';
+            return parent === draggedParent && !f.includes('/', draggedParent ? draggedParent.length + 1 : 0);
+          })
+          .map(path => {
+            const info = folderInfos.find(fi => fi.path === path);
+            return { path, order: info?.order };
+          })
+          .sort((a, b) => {
+            const orderA = a.order ?? Number.MAX_SAFE_INTEGER;
+            const orderB = b.order ?? Number.MAX_SAFE_INTEGER;
+            if (orderA !== orderB) {
+              return orderA - orderB;
+            }
+            return a.path.localeCompare(b.path, 'ja');
+          });
+        
+        // ドラッグ元を除外
+        const withoutDragged = parentFolders.filter(f => f.path !== draggingItem.path);
+        
+        // ターゲットのインデックスを取得
+        const targetIndex = withoutDragged.findIndex(f => f.path === folderPath);
+        if (targetIndex === -1) return;
+        
+        // before/afterに応じて挿入位置を決定
+        const insertIndex = dropPosition.type === 'before' ? targetIndex : targetIndex + 1;
+        
+        // 新しい順序で配列を構築
+        const reordered = [
+          ...withoutDragged.slice(0, insertIndex),
+          { path: draggingItem.path, order: undefined },
+          ...withoutDragged.slice(insertIndex)
+        ];
+        
+        // 新しい順序のパスリストを作成
+        const newOrder = reordered.map(f => f.path);
+        
+        // バックエンドに並び替えを通知
+        const state = await window.api.reorderFolders(newOrder, draggedParent || undefined);
+        applyConnectionState(state);
+      } else {
+        // 異なる親フォルダへの移動
+        await moveFolderToTarget(draggingItem.path, folderPath);
+      }
     }
     resetStructureDragState();
-  }, [draggingItem, moveConnectionToFolder, moveFolderToTarget, resetStructureDragState]);
+  }, [draggingItem, dropPosition, folders, folderInfos, moveConnectionToFolder, moveFolderToTarget, resetStructureDragState, applyConnectionState]);
 
   const handleRootDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
     if (!draggingItem) return;
@@ -713,36 +868,46 @@ export default function App() {
     
     return (
       <div key={node.path} className="space-y-1">
-        <div
-          className={`flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer text-gray-200 transition-all duration-150 ${
-            dropTargetFolder === node.path
-              ? "bg-blue-500/20 border-2 border-blue-400 ring-2 ring-blue-400/50"
-              : "border-2 border-transparent hover:bg-gray-700"
-          } ${
-            isInvalidDropTarget
-              ? "opacity-40 cursor-not-allowed bg-red-500/10"
-              : ""
-          } ${
-            draggingItem?.type === "folder" && draggingItem.path === node.path
-              ? "opacity-60"
-              : ""
-          }`}
-          style={{ marginLeft: depth * 16 }}
-          onClick={() => toggleFolder(node.path)}
-          onContextMenu={handleSidebarContextMenu}
-          draggable
-          onDragStart={(event) => handleFolderDragStart(event, node.path)}
-          onDragEnd={handleStructureDragEnd}
-          onDragOver={(event) => handleFolderDragOver(event, node.path)}
-          onDrop={(event) => handleFolderDrop(event, node.path)}
-        >
-          <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-          {isExpanded ? (
-            <FolderOpen className="w-4 h-4 text-gray-300" />
-          ) : (
-            <Folder className="w-4 h-4 text-gray-400" />
+        <div className="relative">
+          {dropPosition?.type === 'before' && dropPosition.targetId === node.path && (
+            <DropIndicator position="before" />
           )}
-          <span className="text-sm font-medium">{node.name}</span>
+          
+          <div
+            className={`flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer text-gray-200 transition-all duration-150 ${
+              dropTargetFolder === node.path
+                ? "bg-blue-500/20 border-2 border-blue-400 ring-2 ring-blue-400/50"
+                : "border-2 border-transparent hover:bg-gray-700"
+            } ${
+              isInvalidDropTarget
+                ? "opacity-40 cursor-not-allowed bg-red-500/10"
+                : ""
+            } ${
+              draggingItem?.type === "folder" && draggingItem.path === node.path
+                ? "opacity-60"
+                : ""
+            }`}
+            style={{ marginLeft: depth * 16 }}
+            onClick={() => toggleFolder(node.path)}
+            onContextMenu={handleSidebarContextMenu}
+            draggable
+            onDragStart={(event) => handleFolderDragStart(event, node.path)}
+            onDragEnd={handleStructureDragEnd}
+            onDragOver={(event) => handleFolderDragOver(event, node.path)}
+            onDrop={(event) => handleFolderDrop(event, node.path)}
+          >
+            <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+            {isExpanded ? (
+              <FolderOpen className="w-4 h-4 text-gray-300" />
+            ) : (
+              <Folder className="w-4 h-4 text-gray-400" />
+            )}
+            <span className="text-sm font-medium">{node.name}</span>
+          </div>
+          
+          {dropPosition?.type === 'after' && dropPosition.targetId === node.path && (
+            <DropIndicator position="after" />
+          )}
         </div>
         {isExpanded && (
           <div
@@ -877,7 +1042,7 @@ export default function App() {
     }
   }, [sanitizedFolderInput, applyConnectionState, closeFolderDialog]);
 
-  const connectionTree = useMemo(() => buildConnectionTree(connections, folders), [connections, folders]);
+  const connectionTree = useMemo(() => buildConnectionTree(connections, folders, folderInfos), [connections, folders, folderInfos]);
   const activeStatus = useMemo(() => tabStatuses[activeTab], [tabStatuses, activeTab]);
 
   return (

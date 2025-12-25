@@ -21,6 +21,10 @@ const api = {
     ipcRenderer.invoke('db:move-connection', { id, folderPath }),
   moveFolder: (sourcePath: string, targetFolderPath: string | null): Promise<ConnectionStoreState> =>
     ipcRenderer.invoke('db:move-folder', { sourcePath, targetFolderPath }),
+  reorderConnections: (connectionIds: string[], folderPath?: string): Promise<ConnectionStoreState> =>
+    ipcRenderer.invoke('db:reorder-connections', { connectionIds, folderPath }),
+  reorderFolders: (folderPaths: string[], parentFolderPath?: string): Promise<ConnectionStoreState> =>
+    ipcRenderer.invoke('db:reorder-folders', { folderPaths, parentFolderPath }),
   openKeyFileDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:open-key-file'),
   
   // SSH Operations
