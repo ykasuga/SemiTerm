@@ -745,7 +745,11 @@ export default function App() {
           <span className="text-sm font-medium">{node.name}</span>
         </div>
         {isExpanded && (
-          <div className="space-y-1">
+          <div
+            className="space-y-1"
+            onDragOver={(event) => handleFolderDragOver(event, node.path)}
+            onDrop={(event) => handleFolderDrop(event, node.path)}
+          >
             {node.connections.map((conn) => (
               <ConnectionItem
                 key={conn.id}
