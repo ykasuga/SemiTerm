@@ -36,6 +36,11 @@ type DragItem =
   | { type: "connection"; id: string }
   | { type: "folder"; path: string };
 
+type DropPosition = {
+  type: 'before' | 'after' | 'inside';
+  targetId: string; // connection.id or folder.path
+} | null;
+
 const buildConnectionTree = (connections: Connection[], folders: string[]): ConnectionFolderNode => {
   const root: ConnectionFolderNode = {
     id: '__root__',
@@ -97,6 +102,20 @@ const buildConnectionTree = (connections: Connection[], folders: string[]): Conn
   return root;
 };
 
+// Drop indicator component
+function DropIndicator({ position }: { position: 'before' | 'after' }) {
+  return (
+    <div
+      className={`absolute left-0 right-0 h-0.5 bg-blue-400 ${
+        position === 'before' ? '-top-0.5' : '-bottom-0.5'
+      }`}
+      style={{ zIndex: 50 }}
+    >
+      <div className="absolute left-0 w-2 h-2 bg-blue-400 rounded-full -translate-y-1/2 top-1/2" />
+    </div>
+  );
+}
+
 // Sidebar item
 function ConnectionItem({
   connection,
@@ -106,7 +125,11 @@ function ConnectionItem({
   draggable = false,
   onDragStart,
   onDragEnd,
-  isDragging = false
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  isDragging = false,
+  dropPosition = null
 }: {
   connection: Connection,
   onConnect: (c: Connection) => void,
@@ -115,27 +138,44 @@ function ConnectionItem({
   draggable?: boolean,
   onDragStart?: (event: ReactDragEvent<HTMLDivElement>) => void,
   onDragEnd?: (event: ReactDragEvent<HTMLDivElement>) => void,
-  isDragging?: boolean
+  onDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void,
+  onDragLeave?: () => void,
+  onDrop?: (event: ReactDragEvent<HTMLDivElement>) => void,
+  isDragging?: boolean,
+  dropPosition?: DropPosition
 }) {
   return (
-    <div
-      className={`py-2 px-3 group hover:bg-gray-700 rounded-md cursor-pointer flex items-center gap-3 transition-all duration-150 ${
-        isDragging
-          ? "opacity-40 scale-95 ring-2 ring-blue-400 bg-blue-500/10"
-          : ""
-      }`}
-      style={{ marginLeft: depth * 16 }}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onClick={() => onConnect(connection)}
-      onContextMenu={(event) => onContextMenu(event, connection)}
-    >
-      <Server className="w-5 h-5 text-gray-400" />
-      <div className="flex-1 leading-tight">
-        <div className="font-medium text-gray-100 text-sm truncate">{connection.title}</div>
-        <div className="text-gray-400 text-xs">{connection.username}@{connection.host}</div>
+    <div className="relative">
+      {dropPosition?.type === 'before' && dropPosition.targetId === connection.id && (
+        <DropIndicator position="before" />
+      )}
+      
+      <div
+        className={`py-2 px-3 group hover:bg-gray-700 rounded-md cursor-pointer flex items-center gap-3 transition-all duration-150 ${
+          isDragging
+            ? "opacity-40 scale-95 ring-2 ring-blue-400 bg-blue-500/10"
+            : ""
+        }`}
+        style={{ marginLeft: depth * 16 }}
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={() => onConnect(connection)}
+        onContextMenu={(event) => onContextMenu(event, connection)}
+      >
+        <Server className="w-5 h-5 text-gray-400" />
+        <div className="flex-1 leading-tight">
+          <div className="font-medium text-gray-100 text-sm truncate">{connection.title}</div>
+          <div className="text-gray-400 text-xs">{connection.username}@{connection.host}</div>
+        </div>
       </div>
+      
+      {dropPosition?.type === 'after' && dropPosition.targetId === connection.id && (
+        <DropIndicator position="after" />
+      )}
     </div>
   );
 }
@@ -170,6 +210,7 @@ export default function App() {
   const [draggingItem, setDraggingItem] = useState<DragItem | null>(null);
   const [dropTargetFolder, setDropTargetFolder] = useState<string | null>(null);
   const [isRootDropTarget, setRootDropTarget] = useState(false);
+  const [dropPosition, setDropPosition] = useState<DropPosition>(null);
 
   const createTabId = () => {
     tabSerialRef.current += 1;
@@ -205,6 +246,7 @@ export default function App() {
     setDraggingItem(null);
     setDropTargetFolder(null);
     setRootDropTarget(false);
+    setDropPosition(null);
   }, []);
 
   const startSshSession = useCallback((connection: Connection, tabId: string) => {
@@ -480,6 +522,53 @@ export default function App() {
     setDraggingItem({ type: "connection", id: connectionId });
   }, []);
 
+  const handleConnectionDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>, connectionId: string) => {
+    if (!draggingItem) return;
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const rect = event.currentTarget.getBoundingClientRect();
+    const mouseY = event.clientY - rect.top;
+    const height = rect.height;
+    
+    // 接続アイテムは上半分でbefore、下半分でafter
+    if (mouseY < height / 2) {
+      setDropPosition({ type: 'before', targetId: connectionId });
+    } else {
+      setDropPosition({ type: 'after', targetId: connectionId });
+    }
+    
+    setDropTargetFolder(null);
+    setRootDropTarget(false);
+  }, [draggingItem]);
+
+  const handleConnectionDragLeave = useCallback(() => {
+    setDropPosition(null);
+  }, []);
+
+  const handleConnectionDrop = useCallback(async (event: ReactDragEvent<HTMLDivElement>, targetConnectionId: string) => {
+    if (!draggingItem || !dropPosition) return;
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // 現在は接続アイテムのドロップ位置（before/after）を視覚的に表示するのみで、
+    // 実際の並び替え機能は未実装のため、親フォルダへの移動のみを行う
+    
+    // ターゲット接続の親フォルダを取得
+    const targetConnection = connections.find(c => c.id === targetConnectionId);
+    if (!targetConnection) return;
+    
+    const targetFolderPath = targetConnection.folderPath;
+    
+    if (draggingItem.type === "connection") {
+      await moveConnectionToFolder(draggingItem.id, targetFolderPath);
+    } else if (draggingItem.type === "folder") {
+      await moveFolderToTarget(draggingItem.path, targetFolderPath);
+    }
+    
+    resetStructureDragState();
+  }, [draggingItem, dropPosition, connections, moveConnectionToFolder, moveFolderToTarget, resetStructureDragState]);
+
   const handleFolderDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, folderPath: string) => {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", folderPath);
@@ -667,7 +756,11 @@ export default function App() {
                 draggable
                 onDragStart={(event) => handleConnectionDragStart(event, conn.id)}
                 onDragEnd={handleStructureDragEnd}
+                onDragOver={(event) => handleConnectionDragOver(event, conn.id)}
+                onDragLeave={handleConnectionDragLeave}
+                onDrop={(event) => handleConnectionDrop(event, conn.id)}
                 isDragging={draggingItem?.type === "connection" && draggingItem.id === conn.id}
+                dropPosition={dropPosition}
               />
             ))}
             {node.children.map((child) => renderFolder(child, depth + 1))}
@@ -820,7 +913,11 @@ export default function App() {
               draggable
               onDragStart={(event) => handleConnectionDragStart(event, conn.id)}
               onDragEnd={handleStructureDragEnd}
+              onDragOver={(event) => handleConnectionDragOver(event, conn.id)}
+              onDragLeave={handleConnectionDragLeave}
+              onDrop={(event) => handleConnectionDrop(event, conn.id)}
               isDragging={draggingItem?.type === "connection" && draggingItem.id === conn.id}
+              dropPosition={dropPosition}
             />
           ))}
           {connectionTree.children.map(folder => renderFolder(folder, 0))}
