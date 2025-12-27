@@ -10,7 +10,7 @@ interface ConnectionContextMenuProps {
 }
 
 export function ConnectionContextMenu({
-  connection,
+  connection: _connection,
   position,
   menuRef,
   onEdit,

@@ -9,6 +9,16 @@ import log from 'electron-log'
 import { Client, ClientChannel, ConnectConfig } from 'ssh2'
 import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { homedir } from 'os'
+import {
+  SshError,
+  DatabaseError,
+  FileSystemError,
+  ErrorCodes,
+  toSshError,
+  logError,
+  createSuccessResponse,
+  withErrorHandling
+} from '../shared/errors'
 
 
 type SessionRecord = {
@@ -48,9 +58,14 @@ function sendToRenderer(contentsId: number, channel: string, ...args: unknown[])
   contents?.send(channel, ...args)
 }
 
-function emitSshError(sessionId: string, contentsId: number, message: string): void {
-  log.error(`[${sessionId}] SSH error: ${message}`)
-  sendToRenderer(contentsId, 'ssh:error', sessionId, { message })
+function emitSshError(sessionId: string, contentsId: number, error: unknown): void {
+  const sshError = toSshError(error, { sessionId })
+  logError(sshError)
+  sendToRenderer(contentsId, 'ssh:error', sessionId, {
+    message: sshError.message,
+    code: sshError.code,
+    userMessage: sshError.getUserMessage()
+  })
 }
 
 function disposeSession(sessionId: string, emitClose = false): void {
@@ -242,191 +257,312 @@ app.whenReady().then(() => {
     return value
   }
 
-  ipcMain.handle('db:get-connections', () => {
-    return buildStoreState()
-  });
-
-  ipcMain.handle('db:save-connection', (_event, connection: Connection) => {
-    const connections = store.get('connections', [])
-    const now = new Date().toISOString()
-    const sanitizedIncoming = sanitizeConnection(connection)
-    if (connection.id) {
-      // Update existing
-      const index = connections.findIndex(c => c.id === connection.id)
-      if (index !== -1) {
-        connections[index] = { ...connections[index], ...sanitizedIncoming, updatedAt: now }
-      }
-    } else {
-      // Create new
-      const newConnection = { ...sanitizedIncoming, id: uuidv4(), createdAt: now, updatedAt: now }
-      connections.push(newConnection)
+  ipcMain.handle('db:get-connections', withErrorHandling(async () => {
+    try {
+      return createSuccessResponse(buildStoreState())
+    } catch (error) {
+      throw new DatabaseError(
+        'データの読み込みに失敗しました',
+        ErrorCodes.DB_READ_FAILED,
+        { originalError: error }
+      )
     }
-    store.set('connections', connections)
-    addFolderPath(sanitizedIncoming.folderPath)
-    return buildStoreState()
-  });
+  }));
 
-  ipcMain.handle('db:delete-connection', (_event, id: string) => {
-    let connections = store.get('connections', [])
-    connections = connections.filter(c => c.id !== id)
-    store.set('connections', connections)
-    return buildStoreState()
-  });
-
-  ipcMain.handle('db:create-folder', (_event, folderPath: string) => {
-    addFolderPath(folderPath)
-    return buildStoreState()
-  });
-
-  ipcMain.handle('db:move-connection', (_event, payload: { id: string, folderPath: string | null }) => {
-    const { id, folderPath } = payload
-    const connections = store.get('connections', [])
-    const index = connections.findIndex((conn) => conn.id === id)
-    if (index === -1) {
-      return buildStoreState()
-    }
-    const normalizedFolder = normalizeFolderPath(folderPath || undefined)
-    const now = new Date().toISOString()
-    connections[index] = {
-      ...connections[index],
-      folderPath: normalizedFolder,
-      updatedAt: now
-    }
-    store.set('connections', connections)
-    if (normalizedFolder) {
-      addFolderPath(normalizedFolder)
-    }
-    return buildStoreState()
-  });
-
-  ipcMain.handle('db:move-folder', (_event, payload: { sourcePath: string, targetFolderPath: string | null }) => {
-    const { sourcePath, targetFolderPath } = payload
-    const normalizedSource = normalizeFolderPath(sourcePath)
-    if (!normalizedSource) {
-      return buildStoreState()
-    }
-    const normalizedTargetParent = normalizeFolderPath(targetFolderPath || undefined)
-    if (normalizedTargetParent && (normalizedTargetParent === normalizedSource || normalizedTargetParent.startsWith(`${normalizedSource}/`))) {
-      return buildStoreState()
-    }
-    const folderName = normalizedSource.split('/').pop() || normalizedSource
-    const destinationPath = normalizedTargetParent ? `${normalizedTargetParent}/${folderName}` : folderName
-    const normalizedDestination = normalizeFolderPath(destinationPath)
-    if (!normalizedDestination || normalizedDestination === normalizedSource) {
-      return buildStoreState()
-    }
-
-    const connections = store.get('connections', []).map((conn) => {
-      if (!conn.folderPath) return conn
-      if (conn.folderPath === normalizedSource || conn.folderPath.startsWith(`${normalizedSource}/`)) {
-        const newPath = replaceFolderPath(conn.folderPath, normalizedSource, normalizedDestination)
-        return { ...conn, folderPath: newPath }
-      }
-      return conn
-    })
-    store.set('connections', connections)
-
-    const folders = store.get('folders', [])
-    const updatedFolders = folders
-      .map((folderEntry) => {
-        const normalizedEntry = normalizeFolderPath(folderEntry)
-        if (!normalizedEntry) return null
-        if (normalizedEntry === normalizedSource || normalizedEntry.startsWith(`${normalizedSource}/`)) {
-          return replaceFolderPath(normalizedEntry, normalizedSource, normalizedDestination)
+  ipcMain.handle('db:save-connection', withErrorHandling(async (_event, connection: Connection) => {
+    try {
+      const connections = store.get('connections', [])
+      const now = new Date().toISOString()
+      const sanitizedIncoming = sanitizeConnection(connection)
+      
+      if (connection.id) {
+        // Update existing
+        const index = connections.findIndex(c => c.id === connection.id)
+        if (index !== -1) {
+          connections[index] = { ...connections[index], ...sanitizedIncoming, updatedAt: now }
         }
-        return normalizedEntry
+      } else {
+        // Create new
+        const newConnection = { ...sanitizedIncoming, id: uuidv4(), createdAt: now, updatedAt: now }
+        connections.push(newConnection)
+      }
+      
+      store.set('connections', connections)
+      addFolderPath(sanitizedIncoming.folderPath)
+      return createSuccessResponse(buildStoreState())
+    } catch (error) {
+      throw new DatabaseError(
+        '接続の保存に失敗しました',
+        ErrorCodes.DB_WRITE_FAILED,
+        { connectionId: connection.id, originalError: error }
+      )
+    }
+  }));
+
+  ipcMain.handle('db:delete-connection', withErrorHandling(async (_event, id: string) => {
+    try {
+      let connections = store.get('connections', [])
+      const connectionExists = connections.some(c => c.id === id)
+      
+      if (!connectionExists) {
+        throw new DatabaseError(
+          '削除する接続が見つかりません',
+          ErrorCodes.DB_NOT_FOUND,
+          { connectionId: id }
+        )
+      }
+      
+      connections = connections.filter(c => c.id !== id)
+      store.set('connections', connections)
+      return createSuccessResponse(buildStoreState())
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        throw error
+      }
+      throw new DatabaseError(
+        '接続の削除に失敗しました',
+        ErrorCodes.DB_DELETE_FAILED,
+        { connectionId: id, originalError: error }
+      )
+    }
+  }));
+
+  ipcMain.handle('db:create-folder', withErrorHandling(async (_event, folderPath: string) => {
+    try {
+      if (!folderPath || !folderPath.trim()) {
+        throw new DatabaseError(
+          'フォルダパスが無効です',
+          ErrorCodes.DB_VALIDATION_FAILED,
+          { folderPath }
+        )
+      }
+      
+      addFolderPath(folderPath)
+      return createSuccessResponse(buildStoreState())
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        throw error
+      }
+      throw new DatabaseError(
+        'フォルダの作成に失敗しました',
+        ErrorCodes.DB_WRITE_FAILED,
+        { folderPath, originalError: error }
+      )
+    }
+  }));
+
+  ipcMain.handle('db:move-connection', withErrorHandling(async (_event, payload: { id: string, folderPath: string | null }) => {
+    try {
+      const { id, folderPath } = payload
+      const connections = store.get('connections', [])
+      const index = connections.findIndex((conn) => conn.id === id)
+      
+      if (index === -1) {
+        throw new DatabaseError(
+          '移動する接続が見つかりません',
+          ErrorCodes.DB_NOT_FOUND,
+          { connectionId: id }
+        )
+      }
+      
+      const normalizedFolder = normalizeFolderPath(folderPath || undefined)
+      const now = new Date().toISOString()
+      connections[index] = {
+        ...connections[index],
+        folderPath: normalizedFolder,
+        updatedAt: now
+      }
+      
+      store.set('connections', connections)
+      if (normalizedFolder) {
+        addFolderPath(normalizedFolder)
+      }
+      return createSuccessResponse(buildStoreState())
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        throw error
+      }
+      throw new DatabaseError(
+        '接続の移動に失敗しました',
+        ErrorCodes.DB_WRITE_FAILED,
+        { connectionId: payload.id, originalError: error }
+      )
+    }
+  }));
+
+  ipcMain.handle('db:move-folder', withErrorHandling(async (_event, payload: { sourcePath: string, targetFolderPath: string | null }) => {
+    try {
+      const { sourcePath, targetFolderPath } = payload
+      const normalizedSource = normalizeFolderPath(sourcePath)
+      
+      if (!normalizedSource) {
+        throw new DatabaseError(
+          'ソースフォルダパスが無効です',
+          ErrorCodes.DB_VALIDATION_FAILED,
+          { sourcePath }
+        )
+      }
+      
+      const normalizedTargetParent = normalizeFolderPath(targetFolderPath || undefined)
+      if (normalizedTargetParent && (normalizedTargetParent === normalizedSource || normalizedTargetParent.startsWith(`${normalizedSource}/`))) {
+        throw new DatabaseError(
+          'フォルダを自分自身または子フォルダに移動できません',
+          ErrorCodes.DB_VALIDATION_FAILED,
+          { sourcePath, targetFolderPath }
+        )
+      }
+      
+      const folderName = normalizedSource.split('/').pop() || normalizedSource
+      const destinationPath = normalizedTargetParent ? `${normalizedTargetParent}/${folderName}` : folderName
+      const normalizedDestination = normalizeFolderPath(destinationPath)
+      
+      if (!normalizedDestination || normalizedDestination === normalizedSource) {
+        throw new DatabaseError(
+          '移動先フォルダパスが無効です',
+          ErrorCodes.DB_VALIDATION_FAILED,
+          { destinationPath }
+        )
+      }
+
+      const connections = store.get('connections', []).map((conn) => {
+        if (!conn.folderPath) return conn
+        if (conn.folderPath === normalizedSource || conn.folderPath.startsWith(`${normalizedSource}/`)) {
+          const newPath = replaceFolderPath(conn.folderPath, normalizedSource, normalizedDestination)
+          return { ...conn, folderPath: newPath }
+        }
+        return conn
       })
-      .filter((value): value is string => Boolean(value))
+      store.set('connections', connections)
 
-    store.set('folders', updatedFolders)
-    addFolderPath(normalizedDestination)
-    return buildStoreState()
-  });
+      const folders = store.get('folders', [])
+      const updatedFolders = folders
+        .map((folderEntry) => {
+          const normalizedEntry = normalizeFolderPath(folderEntry)
+          if (!normalizedEntry) return null
+          if (normalizedEntry === normalizedSource || normalizedEntry.startsWith(`${normalizedSource}/`)) {
+            return replaceFolderPath(normalizedEntry, normalizedSource, normalizedDestination)
+          }
+          return normalizedEntry
+        })
+        .filter((value): value is string => Boolean(value))
 
-  ipcMain.handle('db:reorder-connections', (_event, payload: { connectionIds: string[], folderPath?: string }) => {
-    const { connectionIds, folderPath } = payload
-    const normalizedFolder = normalizeFolderPath(folderPath)
-    const connections = store.get('connections', [])
-    const now = new Date().toISOString()
-    
-    // 指定されたフォルダ内の接続のみを並び替え
-    const targetConnections = connections.filter(conn => {
-      const connFolder = normalizeFolderPath(conn.folderPath)
-      return connFolder === normalizedFolder
-    })
-    
-    // 新しい順序を設定
-    const orderMap = new Map<string, number>()
-    connectionIds.forEach((id, index) => {
-      orderMap.set(id, index)
-    })
-    
-    // 接続を更新
-    const updatedConnections = connections.map(conn => {
-      if (orderMap.has(conn.id)) {
-        return {
-          ...conn,
-          order: orderMap.get(conn.id),
-          updatedAt: now
-        }
+      store.set('folders', updatedFolders)
+      addFolderPath(normalizedDestination)
+      return createSuccessResponse(buildStoreState())
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        throw error
       }
-      return conn
-    })
-    
-    store.set('connections', updatedConnections)
-    return buildStoreState()
-  });
-
-  ipcMain.handle('db:reorder-folders', (_event, payload: { folderPaths: string[], parentFolderPath?: string }) => {
-    const { folderPaths, parentFolderPath } = payload
-    const normalizedParent = normalizeFolderPath(parentFolderPath)
-    const folderInfos = store.get('folderInfos', [])
-    
-    // 新しい順序を設定
-    const orderMap = new Map<string, number>()
-    folderPaths.forEach((path, index) => {
-      const normalized = normalizeFolderPath(path)
-      if (normalized) {
-        orderMap.set(normalized, index)
-      }
-    })
-    
-    // フォルダ情報を更新
-    const updatedInfos = folderInfos.map(info => {
-      if (orderMap.has(info.path)) {
-        return {
-          ...info,
-          order: orderMap.get(info.path)
-        }
-      }
-      return info
-    })
-    
-    store.set('folderInfos', updatedInfos)
-    return buildStoreState()
-  });
-
-  ipcMain.handle('dialog:open-key-file', async () => {
-    const result = await dialog.showOpenDialog({
-      title: '秘密鍵を選択',
-      defaultPath: join(homedir(), '.ssh'),
-      properties: ['openFile'],
-      filters: [
-        {
-          name: 'SSH Private Keys',
-          extensions: ['pem', 'ppk', 'key', 'rsa', '']
-        },
-        {
-          name: 'All Files',
-          extensions: ['*']
-        }
-      ]
-    })
-    if (result.canceled || result.filePaths.length === 0) {
-      return null
+      throw new DatabaseError(
+        'フォルダの移動に失敗しました',
+        ErrorCodes.DB_WRITE_FAILED,
+        { sourcePath: payload.sourcePath, originalError: error }
+      )
     }
-    return result.filePaths[0]
-  });
+  }));
+
+  ipcMain.handle('db:reorder-connections', withErrorHandling(async (_event, payload: { connectionIds: string[], folderPath?: string }) => {
+    try {
+      const { connectionIds } = payload
+      const connections = store.get('connections', [])
+      const now = new Date().toISOString()
+      
+      // 新しい順序を設定
+      const orderMap = new Map<string, number>()
+      connectionIds.forEach((id, index) => {
+        orderMap.set(id, index)
+      })
+      
+      // 接続を更新
+      const updatedConnections = connections.map(conn => {
+        if (orderMap.has(conn.id)) {
+          return {
+            ...conn,
+            order: orderMap.get(conn.id),
+            updatedAt: now
+          }
+        }
+        return conn
+      })
+      
+      store.set('connections', updatedConnections)
+      return createSuccessResponse(buildStoreState())
+    } catch (error) {
+      throw new DatabaseError(
+        '接続の並び替えに失敗しました',
+        ErrorCodes.DB_WRITE_FAILED,
+        { folderPath: payload.folderPath, originalError: error }
+      )
+    }
+  }));
+
+  ipcMain.handle('db:reorder-folders', withErrorHandling(async (_event, payload: { folderPaths: string[], parentFolderPath?: string }) => {
+    try {
+      const { folderPaths } = payload
+      const folderInfos = store.get('folderInfos', [])
+      
+      // 新しい順序を設定
+      const orderMap = new Map<string, number>()
+      folderPaths.forEach((path, index) => {
+        const normalized = normalizeFolderPath(path)
+        if (normalized) {
+          orderMap.set(normalized, index)
+        }
+      })
+      
+      // フォルダ情報を更新
+      const updatedInfos = folderInfos.map(info => {
+        if (orderMap.has(info.path)) {
+          return {
+            ...info,
+            order: orderMap.get(info.path)
+          }
+        }
+        return info
+      })
+      
+      store.set('folderInfos', updatedInfos)
+      return createSuccessResponse(buildStoreState())
+    } catch (error) {
+      throw new DatabaseError(
+        'フォルダの並び替えに失敗しました',
+        ErrorCodes.DB_WRITE_FAILED,
+        { parentFolderPath: payload.parentFolderPath, originalError: error }
+      )
+    }
+  }));
+
+  ipcMain.handle('dialog:open-key-file', withErrorHandling(async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: '秘密鍵を選択',
+        defaultPath: join(homedir(), '.ssh'),
+        properties: ['openFile'],
+        filters: [
+          {
+            name: 'SSH Private Keys',
+            extensions: ['pem', 'ppk', 'key', 'rsa', '']
+          },
+          {
+            name: 'All Files',
+            extensions: ['*']
+          }
+        ]
+      })
+      
+      if (result.canceled || result.filePaths.length === 0) {
+        return createSuccessResponse(null)
+      }
+      
+      return createSuccessResponse(result.filePaths[0])
+    } catch (error) {
+      throw new FileSystemError(
+        'ファイル選択ダイアログの表示に失敗しました',
+        ErrorCodes.FS_READ_FAILED,
+        { originalError: error }
+      )
+    }
+  }));
 
   // SSH Handlers
   ipcMain.on('ssh:connect', (event, connection: Connection, sessionId?: string) => {
@@ -437,18 +573,21 @@ app.whenReady().then(() => {
     disposeSession(resolvedSessionId)
 
     if (connection.auth.type === 'password' && !connection.auth.password) {
-      emitSshError(resolvedSessionId, senderId, 'パスワードが入力されていません')
+      const error = new SshError('パスワードが入力されていません', ErrorCodes.SSH_AUTH_FAILED)
+      emitSshError(resolvedSessionId, senderId, error)
       return
     }
 
     if (connection.auth.type === 'key' && !connection.auth.keyPath) {
-      emitSshError(resolvedSessionId, senderId, '秘密鍵のパスが設定されていません')
+      const error = new SshError('秘密鍵のパスが設定されていません', ErrorCodes.SSH_KEY_NOT_FOUND)
+      emitSshError(resolvedSessionId, senderId, error)
       return
     }
 
     const client = new Client()
     const timeout = setTimeout(() => {
-      emitSshError(resolvedSessionId, senderId, '接続がタイムアウトしました')
+      const error = new SshError('接続がタイムアウトしました', ErrorCodes.SSH_TIMEOUT)
+      emitSshError(resolvedSessionId, senderId, error)
       disposeSession(resolvedSessionId)
     }, 10000)
 
@@ -468,11 +607,27 @@ app.whenReady().then(() => {
         sshConfig.password = connection.auth.password
       } else if (connection.auth.type === 'key' && connection.auth.keyPath) {
         const resolvedPath = resolveKeyPath(connection.auth.keyPath)
-        const keyBuffer = readFileSync(resolvedPath)
-        sshConfig.privateKey = keyBuffer
+        try {
+          const keyBuffer = readFileSync(resolvedPath)
+          sshConfig.privateKey = keyBuffer
+        } catch (readError) {
+          const error = new FileSystemError(
+            `秘密鍵の読み込みに失敗しました: ${resolvedPath}`,
+            ErrorCodes.FS_READ_FAILED,
+            { path: resolvedPath, originalError: readError }
+          )
+          emitSshError(resolvedSessionId, senderId, error)
+          disposeSession(resolvedSessionId)
+          return
+        }
       }
     } catch (error) {
-      emitSshError(resolvedSessionId, senderId, '秘密鍵の読み込みに失敗しました')
+      const sshError = new SshError(
+        '秘密鍵の設定に失敗しました',
+        ErrorCodes.SSH_KEY_INVALID,
+        { originalError: error }
+      )
+      emitSshError(resolvedSessionId, senderId, sshError)
       disposeSession(resolvedSessionId)
       return
     }
@@ -488,7 +643,12 @@ app.whenReady().then(() => {
         sendToRenderer(senderId, 'ssh:connected', resolvedSessionId)
         client.shell((err, stream) => {
           if (err) {
-            emitSshError(resolvedSessionId, senderId, err.message)
+            const error = new SshError(
+              'シェルの起動に失敗しました',
+              ErrorCodes.SSH_SHELL_FAILED,
+              { originalError: err.message }
+            )
+            emitSshError(resolvedSessionId, senderId, error)
             disposeSession(resolvedSessionId)
             return
           }
@@ -518,7 +678,7 @@ app.whenReady().then(() => {
         })
       })
       .on('error', (error) => {
-        emitSshError(resolvedSessionId, senderId, error.message)
+        emitSshError(resolvedSessionId, senderId, error)
         disposeSession(resolvedSessionId)
       })
       .on('end', () => {
@@ -533,7 +693,7 @@ app.whenReady().then(() => {
     try {
       client.connect(sshConfig)
     } catch (error) {
-      emitSshError(resolvedSessionId, senderId, 'SSH接続に失敗しました')
+      emitSshError(resolvedSessionId, senderId, error)
       disposeSession(resolvedSessionId)
     }
   })

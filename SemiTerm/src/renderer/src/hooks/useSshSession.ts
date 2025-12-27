@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { Connection, TabStatus } from '../types';
+import { getUserFriendlyMessage, logError } from '../utils/errorUtils';
 
 export interface UseSshSessionReturn {
   startSshSession: (connection: Connection, tabId: string) => void;
@@ -13,32 +14,46 @@ export const useSshSession = (
   
   // SSH接続を開始
   const startSshSession = useCallback((connection: Connection, tabId: string) => {
-    setTabConnection(tabId, connection);
-    updateTabStatus(tabId, {
-      state: "connecting",
-      host: connection.host,
-      username: connection.username
-    });
-    incrementSessionToken(tabId);
-    window.api.sshConnect(connection, tabId);
+    try {
+      setTabConnection(tabId, connection);
+      updateTabStatus(tabId, {
+        state: "connecting",
+        host: connection.host,
+        username: connection.username
+      });
+      incrementSessionToken(tabId);
+      window.api.sshConnect(connection, tabId);
+    } catch (error) {
+      logError(error, { connection, tabId });
+      updateTabStatus(tabId, {
+        state: "error",
+        errorMessage: getUserFriendlyMessage(error)
+      });
+    }
   }, [setTabConnection, updateTabStatus, incrementSessionToken]);
 
   // SSHイベントリスナーの設定
   useEffect(() => {
-    const handleError = (_event: unknown, id: string, error: { message: string }) => {
+    const handleError = (_event: unknown, id: string, error: unknown) => {
+      logError(error, { sessionId: id, event: 'ssh:error' });
+      
+      const errorMessage = getUserFriendlyMessage(error);
+      
       updateTabStatus(id, {
         state: "error",
-        errorMessage: error.message
+        errorMessage
       });
     };
 
     const handleClose = (_event: unknown, id: string) => {
+      console.log(`[SSH] Connection closed: ${id}`);
       updateTabStatus(id, {
         state: "disconnected"
       });
     };
 
     const handleConnected = (_event: unknown, id: string) => {
+      console.log(`[SSH] Connection established: ${id}`);
       updateTabStatus(id, {
         state: "connected",
         errorMessage: undefined

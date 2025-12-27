@@ -327,9 +327,10 @@ SemiTerm/src/
   - [ ] IPC型安全化
 
 ### フェーズ2: 品質向上（優先度: 中）
-- [ ] エラーハンドリング統一
-  - [ ] カスタムエラークラス
-  - [ ] エラーハンドリングミドルウェア
+- [x] エラーハンドリング統一 ✅ 2025-12-27完了
+  - [x] カスタムエラークラス
+  - [x] エラーハンドリングユーティリティ
+  - [x] Main/Rendererプロセスへの適用
 - [ ] 定数の集約
   - [ ] 定数ファイル作成
   - [ ] マジックナンバー置き換え
@@ -381,6 +382,33 @@ SemiTerm/src/
 2. **環境準備**: テスト環境とブランチの準備
 3. **フェーズ1開始**: Main プロセス分割から着手
 4. **継続的な評価**: 各フェーズ後の効果測定
+
+---
+
+## 📝 実装履歴
+
+### 2025-12-27: エラーハンドリング統一完了
+**実装内容**:
+- カスタムエラークラスの作成（`SemiTerm/src/shared/errors/AppError.ts`）
+  - `AppError`, `SshError`, `DatabaseError`, `FileSystemError`, `ValidationError`, `ProgrammingError`
+  - エラーコード定数の定義
+- エラーハンドリングユーティリティの実装
+  - Main プロセス用: `SemiTerm/src/shared/errors/errorHandler.ts`
+  - Renderer プロセス用: `SemiTerm/src/renderer/src/utils/errorUtils.ts`
+- Main プロセスのエラーハンドリング統一
+  - SSH接続エラーの詳細な分類とユーザーフレンドリーなメッセージ
+  - 全データベースIPCハンドラーへの`withErrorHandling`適用
+  - 成功/失敗レスポンスの統一
+- Renderer プロセスのエラーハンドリング統一
+  - `useSshSession.ts`と`useConnections.ts`の更新
+  - エラーレスポンスのアンラップとユーザー通知の改善
+
+**成果**:
+- TypeScriptコンパイル成功
+- ビルド成功（エラーなし）
+- エラー処理の一貫性向上
+- ユーザーフレンドリーなエラーメッセージ
+- デバッグ性の向上
 
 ---
 
