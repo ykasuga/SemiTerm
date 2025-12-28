@@ -56,7 +56,7 @@ export function ConnectionItem({
       >
         <Server className="w-5 h-5 text-gray-400" />
         <div className="flex-1 leading-tight">
-          <div className="font-medium text-gray-100 text-sm truncate">{connection.title}</div>
+          <div className="font-medium text-gray-100 text-sm truncate">{connection.name}</div>
           <div className="text-gray-400 text-xs">{connection.username}@{connection.host}</div>
         </div>
       </div>

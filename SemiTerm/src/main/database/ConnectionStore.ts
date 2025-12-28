@@ -41,16 +41,29 @@ export class ConnectionStore {
   /**
    * 接続データを正規化
    */
-  private sanitizeConnection(connection: Connection): Connection {
+  private sanitizeConnection(connection: Connection | any): Connection {
     const sanitizedAuth =
       connection.auth.type === 'password'
         ? { type: 'password' as const }
         : { type: 'key' as const, keyPath: connection.auth.keyPath }
 
+    // 旧データの移行: titleプロパティがある場合はnameに変換
+    let name = connection.name
+    if (!name && 'title' in connection) {
+      name = connection.title
+    }
+
     return {
-      ...connection,
+      id: connection.id,
+      name: name || 'Unnamed Connection',
+      host: connection.host,
+      port: connection.port,
+      username: connection.username,
       folderPath: PathResolver.normalizeFolderPath(connection.folderPath),
-      auth: sanitizedAuth
+      auth: sanitizedAuth,
+      order: connection.order,
+      createdAt: connection.createdAt,
+      updatedAt: connection.updatedAt
     }
   }
 
@@ -111,6 +124,7 @@ export class ConnectionStore {
     const infoMap = new Map(validInfos.map((info) => [info.path, info]))
     const updatedInfos = sanitizedFolders.map((path) => infoMap.get(path) || { path })
 
+    // マイグレーション後のデータを永続化
     this.store.set('connections', sanitizedConnections)
     this.store.set('folders', sanitizedFolders)
     this.store.set('folderInfos', updatedInfos)
@@ -245,6 +259,7 @@ export class ConnectionStore {
     try {
       const connections = this.store.get('connections', [])
       const now = new Date().toISOString()
+      const normalizedFolder = PathResolver.normalizeFolderPath(folderPath)
 
       // 新しい順序を設定
       const orderMap = new Map<string, number>()
@@ -252,9 +267,12 @@ export class ConnectionStore {
         orderMap.set(id, index)
       })
 
-      // 接続を更新
+      // 接続を更新（指定されたフォルダ内の接続のみ）
       const updatedConnections = connections.map((conn) => {
-        if (orderMap.has(conn.id)) {
+        const connNormalizedFolder = PathResolver.normalizeFolderPath(conn.folderPath)
+        
+        // 同じフォルダ内の接続のみ更新
+        if (connNormalizedFolder === normalizedFolder && orderMap.has(conn.id)) {
           return {
             ...conn,
             order: orderMap.get(conn.id),

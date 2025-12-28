@@ -101,7 +101,7 @@ export const sortNode = (node: ConnectionFolderNode, folderInfos?: FolderInfo[])
     if (orderA !== orderB) {
       return orderA - orderB;
     }
-    return a.title.localeCompare(b.title, 'ja');
+    return a.name.localeCompare(b.name, 'ja');
   });
   
   node.children.forEach(child => sortNode(child, folderInfos));

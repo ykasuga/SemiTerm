@@ -95,10 +95,14 @@ export const isDescendant = (ancestorPath: string, descendantPath: string): bool
 };
 
 /**
- * フォルダパスを正規化する（undefinedを空文字列に変換）
+ * フォルダパスを正規化する（空文字列とundefinedを統一）
  */
-export const normalizeFolderPath = (folderPath?: string): string | undefined => {
-  return folderPath || undefined;
+export const normalizeFolderPath = (folderPath?: string | null): string | undefined => {
+  // 空文字列、null、undefinedをすべてundefinedに統一
+  if (!folderPath || folderPath.trim() === '') {
+    return undefined;
+  }
+  return folderPath;
 };
 
 /**
@@ -179,14 +183,18 @@ export const reorderConnections = (
   const sortedConnections = sortItemsByOrder(
     folderConnections,
     c => c.order,
-    c => c.title
+    c => c.name
   );
   
   const draggedConnection = sortedConnections.find(c => c.id === draggedConnectionId);
   const targetConnection = sortedConnections.find(c => c.id === targetConnectionId);
   
-  if (!draggedConnection || !targetConnection) {
-    return sortedConnections.map(c => c.id);
+  if (!draggedConnection) {
+    throw new Error(`Dragged connection not found: ${draggedConnectionId}`);
+  }
+  
+  if (!targetConnection) {
+    throw new Error(`Target connection not found: ${targetConnectionId}`);
   }
   
   const reordered = reorderItems(
@@ -235,8 +243,12 @@ export const reorderFolders = (
   const draggedFolder = sortedFolders.find(f => f.path === draggedFolderPath);
   const targetFolder = sortedFolders.find(f => f.path === targetFolderPath);
   
-  if (!draggedFolder || !targetFolder) {
-    return sortedFolders.map(f => f.path);
+  if (!draggedFolder) {
+    throw new Error(`Dragged folder not found: ${draggedFolderPath}`);
+  }
+  
+  if (!targetFolder) {
+    throw new Error(`Target folder not found: ${targetFolderPath}`);
   }
   
   const reordered = reorderItems(

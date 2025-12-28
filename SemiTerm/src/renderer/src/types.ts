@@ -1,7 +1,7 @@
 // From design doc: 5. 接続情報フォーマット（JSON）
 export interface Connection {
   id: string;
-  title: string;
+  name: string; // バックエンドと統一（旧: title）
   folderPath?: string;
   host: string;
   port: number;

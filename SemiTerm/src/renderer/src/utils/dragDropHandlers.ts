@@ -6,6 +6,7 @@ import {
   reorderConnections,
   reorderFolders
 } from './dragDropUtils';
+import { unwrapResponse } from './errorUtils';
 
 /**
  * ドラッグ開始ハンドラーを作成するファクトリ関数
@@ -106,20 +107,28 @@ export const handleConnectionReorder = async (
   connections: Connection[],
   applyConnectionState: (state: any) => void
 ): Promise<void> => {
-  const targetConnection = connections.find(c => c.id === targetConnectionId);
-  if (!targetConnection) return;
-  
-  const targetFolderPath = targetConnection.folderPath;
-  const newOrder = reorderConnections(
-    connections,
-    draggedConnectionId,
-    targetConnectionId,
-    position,
-    targetFolderPath
-  );
-  
-  const state = await window.api.reorderConnections(newOrder, targetFolderPath || undefined);
-  applyConnectionState(state);
+  try {
+    const targetConnection = connections.find(c => c.id === targetConnectionId);
+    if (!targetConnection) {
+      return;
+    }
+    
+    const targetFolderPath = targetConnection.folderPath;
+    const newOrder = reorderConnections(
+      connections,
+      draggedConnectionId,
+      targetConnectionId,
+      position,
+      targetFolderPath
+    );
+    
+    const response = await window.api.reorderConnections(newOrder, targetFolderPath || undefined);
+    const state = unwrapResponse(response);
+    applyConnectionState(state);
+  } catch (error) {
+    console.error('Error in handleConnectionReorder:', error);
+    throw error;
+  }
 };
 
 /**
@@ -133,18 +142,24 @@ export const handleFolderReorder = async (
   folderInfos: FolderInfo[],
   applyConnectionState: (state: any) => void
 ): Promise<void> => {
-  const parentPath = extractParentPath(draggedFolderPath);
-  const newOrder = reorderFolders(
-    folders,
-    folderInfos,
-    draggedFolderPath,
-    targetFolderPath,
-    position,
-    parentPath || undefined
-  );
-  
-  const state = await window.api.reorderFolders(newOrder, parentPath || undefined);
-  applyConnectionState(state);
+  try {
+    const parentPath = extractParentPath(draggedFolderPath);
+    const newOrder = reorderFolders(
+      folders,
+      folderInfos,
+      draggedFolderPath,
+      targetFolderPath,
+      position,
+      parentPath || undefined
+    );
+    
+    const response = await window.api.reorderFolders(newOrder, parentPath || undefined);
+    const state = unwrapResponse(response);
+    applyConnectionState(state);
+  } catch (error) {
+    console.error('Error in handleFolderReorder:', error);
+    throw error;
+  }
 };
 
 /**
@@ -165,37 +180,42 @@ export const handleConnectionDrop = async (
   event.preventDefault();
   event.stopPropagation();
   
-  const targetConnection = connections.find(c => c.id === targetConnectionId);
-  if (!targetConnection) return;
-  
-  const targetFolderPath = targetConnection.folderPath;
-  
-  if (draggingItem.type === "connection") {
-    const draggedConnection = connections.find(c => c.id === draggingItem.id);
-    if (!draggedConnection) return;
+  try {
+    const targetConnection = connections.find(c => c.id === targetConnectionId);
+    if (!targetConnection) return;
     
-    const draggedFolderPath = draggedConnection.folderPath;
-    const normalizedDraggedFolder = draggedFolderPath || undefined;
-    const normalizedTargetFolder = targetFolderPath || undefined;
+    const targetFolderPath = targetConnection.folderPath;
     
-    // 同じフォルダ内での並び替え
-    if (normalizedDraggedFolder === normalizedTargetFolder) {
-      await handleConnectionReorder(
-        draggingItem.id,
-        targetConnectionId,
-        dropPosition.type as 'before' | 'after',
-        connections,
-        applyConnectionState
-      );
-    } else {
-      // 異なるフォルダへの移動
-      await moveConnectionToFolder(draggingItem.id, targetFolderPath);
+    if (draggingItem.type === "connection") {
+      const draggedConnection = connections.find(c => c.id === draggingItem.id);
+      if (!draggedConnection) return;
+      
+      const draggedFolderPath = draggedConnection.folderPath;
+      const normalizedDraggedFolder = draggedFolderPath || undefined;
+      const normalizedTargetFolder = targetFolderPath || undefined;
+      
+      // 同じフォルダ内での並び替え
+      if (normalizedDraggedFolder === normalizedTargetFolder) {
+        await handleConnectionReorder(
+          draggingItem.id,
+          targetConnectionId,
+          dropPosition.type as 'before' | 'after',
+          connections,
+          applyConnectionState
+        );
+      } else {
+        // 異なるフォルダへの移動
+        await moveConnectionToFolder(draggingItem.id, targetFolderPath);
+      }
+    } else if (draggingItem.type === "folder") {
+      await moveFolderToTarget(draggingItem.path, targetFolderPath);
     }
-  } else if (draggingItem.type === "folder") {
-    await moveFolderToTarget(draggingItem.path, targetFolderPath);
+  } catch (error) {
+    console.error('Error in handleConnectionDrop:', error);
+    throw error;
+  } finally {
+    resetStructureDragState();
   }
-  
-  resetStructureDragState();
 };
 
 /**
@@ -216,7 +236,7 @@ export const handleFolderDrop = async (
   if (!draggingItem) return;
   
   // フォルダを自分自身または子孫にドロップしようとしている場合は無効
-  if (draggingItem.type === "folder" && 
+  if (draggingItem.type === "folder" &&
       (folderPath === draggingItem.path || folderPath.startsWith(`${draggingItem.path}/`))) {
     return;
   }
@@ -224,26 +244,31 @@ export const handleFolderDrop = async (
   event.preventDefault();
   event.stopPropagation();
   
-  if (draggingItem.type === "connection") {
-    await moveConnectionToFolder(draggingItem.id, folderPath);
-  } else if (draggingItem.type === "folder") {
-    // 同じ親フォルダ内のフォルダ同士の並び替え
-    if (isSameParent(draggingItem.path, folderPath) && dropPosition) {
-      await handleFolderReorder(
-        draggingItem.path,
-        folderPath,
-        dropPosition.type as 'before' | 'after',
-        folders,
-        folderInfos,
-        applyConnectionState
-      );
-    } else {
-      // 異なるフォルダへの移動
-      await moveFolderToTarget(draggingItem.path, folderPath);
+  try {
+    if (draggingItem.type === "connection") {
+      await moveConnectionToFolder(draggingItem.id, folderPath);
+    } else if (draggingItem.type === "folder") {
+      // 同じ親フォルダ内のフォルダ同士の並び替え
+      if (isSameParent(draggingItem.path, folderPath) && dropPosition) {
+        await handleFolderReorder(
+          draggingItem.path,
+          folderPath,
+          dropPosition.type as 'before' | 'after',
+          folders,
+          folderInfos,
+          applyConnectionState
+        );
+      } else {
+        // 異なるフォルダへの移動
+        await moveFolderToTarget(draggingItem.path, folderPath);
+      }
     }
+  } catch (error) {
+    console.error('Error in handleFolderDrop:', error);
+    throw error;
+  } finally {
+    resetStructureDragState();
   }
-  
-  resetStructureDragState();
 };
 
 /**
@@ -260,13 +285,18 @@ export const handleRootDrop = async (
   event.preventDefault();
   event.stopPropagation();
   
-  if (draggingItem.type === "connection") {
-    await moveConnectionToFolder(draggingItem.id, undefined);
-  } else if (draggingItem.type === "folder") {
-    await moveFolderToTarget(draggingItem.path, undefined);
+  try {
+    if (draggingItem.type === "connection") {
+      await moveConnectionToFolder(draggingItem.id, undefined);
+    } else if (draggingItem.type === "folder") {
+      await moveFolderToTarget(draggingItem.path, undefined);
+    }
+  } catch (error) {
+    console.error('Error in handleRootDrop:', error);
+    throw error;
+  } finally {
+    resetStructureDragState();
   }
-  
-  resetStructureDragState();
 };
 
 // Made with Bob

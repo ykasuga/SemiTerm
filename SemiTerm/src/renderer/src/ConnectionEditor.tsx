@@ -26,7 +26,7 @@ interface ConnectionEditorProps {
 }
 
 const initialConnectionState: Omit<Connection, 'id' | 'createdAt' | 'updatedAt'> = {
-  title: '',
+  name: '',
   folderPath: '',
   host: '',
   port: 22,
@@ -41,7 +41,7 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
   useEffect(() => {
     if (connection) {
       setFormData({
-        title: connection.title,
+        name: connection.name,
         folderPath: connection.folderPath || '',
         host: connection.host,
         port: connection.port,
@@ -55,9 +55,9 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
 
   useEffect(() => {
     // Validation logic from design doc
-    const { title, host, username, auth } = formData;
+    const { name, host, username, auth } = formData;
     const isAuthValid = auth.type === 'password' ? auth.password : auth.keyPath;
-    setIsValid(!!(title && host && username && isAuthValid));
+    setIsValid(!!(name && host && username && isAuthValid));
   }, [formData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,8 +110,8 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid w-full items-center gap-1.5">
-            <Label htmlFor="title">接続名</Label>
-            <Input id="title" name="title" value={formData.title} onChange={handleChange} className="bg-gray-800 border-gray-600" />
+            <Label htmlFor="name">接続名</Label>
+            <Input id="name" name="name" value={formData.name} onChange={handleChange} className="bg-gray-800 border-gray-600" />
           </div>
           <div className="grid w-full items-center gap-1.5">
             <Label htmlFor="folderPath">フォルダ (例: Production/DB)</Label>

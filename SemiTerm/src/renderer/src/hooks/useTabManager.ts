@@ -54,7 +54,7 @@ export const useTabManager = (
         tabLabelSerialRef.current += 1;
       }
       const serial = assignedSerial;
-      const newTab: TabItem = { id: resolvedTabId, label: `${serial} - ${connection.title}` };
+      const newTab: TabItem = { id: resolvedTabId, label: `${serial} - ${connection.name}` };
       return [...prevTabs, newTab];
     });
     
