@@ -81,11 +81,11 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
   };
 
   const handleBrowseKeyFile = async () => {
-    const selectedPath = await window.api.openKeyFileDialog();
-    if (selectedPath) {
+    const response = await window.api.openKeyFileDialog();
+    if (response && response.success && response.data) {
       setFormData(prev => ({
         ...prev,
-        auth: { type: 'key', keyPath: selectedPath }
+        auth: { type: 'key', keyPath: response.data as string }
       }));
     }
   };

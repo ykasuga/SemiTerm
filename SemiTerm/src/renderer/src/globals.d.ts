@@ -1,6 +1,25 @@
 import type { IpcRendererEvent } from 'electron';
 import type { Connection, ConnectionStoreState } from './types';
 
+// API Response types
+interface SuccessResponse<T> {
+  success: true;
+  data: T;
+}
+
+interface ErrorResponse {
+  success: false;
+  error: {
+    message: string;
+    code: string;
+    userMessage: string;
+    timestamp: string;
+    context?: Record<string, unknown>;
+  };
+}
+
+type ApiResponse<T> = SuccessResponse<T> | ErrorResponse;
+
 declare global {
   interface Window {
     electron: {
@@ -26,7 +45,7 @@ declare global {
       moveFolder: (sourcePath: string, targetFolderPath: string | null) => Promise<ConnectionStoreState>;
       reorderConnections: (connectionIds: string[], folderPath?: string) => Promise<ConnectionStoreState>;
       reorderFolders: (folderPaths: string[], parentFolderPath?: string) => Promise<ConnectionStoreState>;
-      openKeyFileDialog: () => Promise<string | null>;
+      openKeyFileDialog: () => Promise<ApiResponse<string | null>>;
       
       // SSH Operations
       sshConnect: (connection: Connection, sessionId: string) => void;
