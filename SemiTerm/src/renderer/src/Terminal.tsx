@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { Terminal, ITerminalOptions } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { TERMINAL, TERMINAL_THEME, ANIMATION } from '../../shared/constants'
 
 interface TerminalProps {
   connectionId: string
@@ -10,20 +11,7 @@ interface TerminalProps {
 }
 
 const getTheme = (isDarkMode: boolean): ITerminalOptions['theme'] => {
-  if (isDarkMode) {
-    return {
-      background: '#1e1e1e',
-      foreground: '#d4d4d4',
-      cursor: '#d4d4d4',
-      selectionBackground: '#555555'
-    }
-  }
-  return {
-    background: '#ffffff',
-    foreground: '#000000',
-    cursor: '#000000',
-    selectionBackground: '#e0e0e0'
-  }
+  return isDarkMode ? TERMINAL_THEME.DARK : TERMINAL_THEME.LIGHT
 }
 
 const TerminalComponent: React.FC<TerminalProps> = ({ connectionId, isActive, resetToken }) => {
@@ -35,11 +23,10 @@ const TerminalComponent: React.FC<TerminalProps> = ({ connectionId, isActive, re
       console.log(`Initializing terminal for ${connectionId}`)
 
       const terminalOptions: ITerminalOptions = {
-        fontFamily:
-          '"JetBrains Mono", "Fira Code", Menlo, "DejaVu Sans Mono", Consolas, "Lucida Console", monospace',
-        fontSize: 14,
-        scrollback: 10000,
-        cursorBlink: true,
+        fontFamily: TERMINAL.FONT_FAMILY,
+        fontSize: TERMINAL.FONT_SIZE,
+        scrollback: TERMINAL.SCROLLBACK,
+        cursorBlink: TERMINAL.CURSOR_BLINK,
         theme: getTheme(window.matchMedia('(prefers-color-scheme: dark)').matches)
       }
 
@@ -91,7 +78,7 @@ const TerminalComponent: React.FC<TerminalProps> = ({ connectionId, isActive, re
     const timeoutId = window.setTimeout(() => {
       term.focus()
       fitAddon.fit()
-    }, 50)
+    }, ANIMATION.RESIZE_DEBOUNCE_MS)
 
     return () => window.clearTimeout(timeoutId)
   }, [isActive])

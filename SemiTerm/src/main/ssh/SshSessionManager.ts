@@ -11,6 +11,7 @@ import {
   toSshError,
   logError
 } from '../../shared/errors'
+import { SSH_DEFAULTS, TERMINAL_SIZE } from '../../shared/constants'
 
 /**
  * SSHセッション管理クラス
@@ -102,17 +103,17 @@ export class SshSessionManager {
       const error = new SshError('接続がタイムアウトしました', ErrorCodes.SSH_TIMEOUT)
       this.emitSshError(sessionId, senderId, error)
       this.disposeSession(sessionId)
-    }, 10000)
+    }, SSH_DEFAULTS.SESSION_CLEANUP_TIMEOUT_MS)
 
     this.sessions.set(sessionId, { client, webContentsId: senderId, timeout })
 
     const sshConfig: ConnectConfig = {
       host: connection.host,
-      port: connection.port || 22,
+      port: connection.port || SSH_DEFAULTS.PORT,
       username: connection.username,
-      keepaliveInterval: 15000,
-      keepaliveCountMax: 3,
-      readyTimeout: 10000
+      keepaliveInterval: SSH_DEFAULTS.KEEPALIVE_INTERVAL_MS,
+      keepaliveCountMax: SSH_DEFAULTS.KEEPALIVE_COUNT_MAX,
+      readyTimeout: SSH_DEFAULTS.READY_TIMEOUT_MS
     }
 
     // 認証設定
@@ -228,7 +229,12 @@ export class SshSessionManager {
   resize(sessionId: string, size: TerminalSize): void {
     const session = this.sessions.get(sessionId)
     if (session?.stream) {
-      session.stream.setWindow(size.rows, size.cols, size.height ?? 0, size.width ?? 0)
+      session.stream.setWindow(
+        size.rows,
+        size.cols,
+        size.height ?? TERMINAL_SIZE.DEFAULT_HEIGHT,
+        size.width ?? TERMINAL_SIZE.DEFAULT_WIDTH
+      )
     }
   }
 

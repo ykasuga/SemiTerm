@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Connection, ContextMenuState, TabContextMenuState, ListContextMenuState } from '../types';
 import { calculateMenuPosition } from '../utils/contextMenuUtils';
+import { MENU } from '../../../shared/constants';
 
 export interface UseContextMenuReturn {
   contextMenuState: ContextMenuState | null;
@@ -33,9 +34,11 @@ export const useContextMenu = (): UseContextMenuReturn => {
     event.stopPropagation();
     setListContextMenuState(null);
     
-    const menuWidth = 200;
-    const menuHeight = 100;
-    const { x, y } = calculateMenuPosition(event, menuWidth, menuHeight);
+    const { x, y } = calculateMenuPosition(
+      event,
+      MENU.CONNECTION_CONTEXT.WIDTH,
+      MENU.CONNECTION_CONTEXT.HEIGHT
+    );
     
     setContextMenuState({ connection, x, y });
   }, []);
@@ -46,9 +49,11 @@ export const useContextMenu = (): UseContextMenuReturn => {
     event.stopPropagation();
     setListContextMenuState(null);
     
-    const menuWidth = 220;
-    const menuHeight = 160;
-    const { x, y } = calculateMenuPosition(event, menuWidth, menuHeight);
+    const { x, y } = calculateMenuPosition(
+      event,
+      MENU.LIST_CONTEXT.WIDTH,
+      MENU.LIST_CONTEXT.HEIGHT
+    );
     
     setTabContextMenuState({ tabId, x, y });
   }, []);
@@ -60,9 +65,11 @@ export const useContextMenu = (): UseContextMenuReturn => {
     setContextMenuState(null);
     setTabContextMenuState(null);
     
-    const menuWidth = 220;
-    const menuHeight = 60;
-    const { x, y } = calculateMenuPosition(event, menuWidth, menuHeight);
+    const { x, y } = calculateMenuPosition(
+      event,
+      MENU.TAB_CONTEXT.WIDTH,
+      MENU.TAB_CONTEXT.HEIGHT
+    );
     
     setListContextMenuState({ x, y });
   }, []);

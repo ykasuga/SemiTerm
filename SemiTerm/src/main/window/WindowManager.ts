@@ -2,6 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
+import { WINDOW } from '../../shared/constants'
 
 /**
  * ウィンドウ管理クラス
@@ -15,8 +16,8 @@ export class WindowManager {
    */
   createMainWindow(): BrowserWindow {
     this.mainWindow = new BrowserWindow({
-      width: 1280,
-      height: 720,
+      width: WINDOW.DEFAULT_WIDTH,
+      height: WINDOW.DEFAULT_HEIGHT,
       show: false,
       autoHideMenuBar: true,
       ...(process.platform === 'linux' ? { icon } : {}),

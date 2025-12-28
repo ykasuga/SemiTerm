@@ -1,3 +1,5 @@
+import { SPACING } from '../../../shared/constants';
+
 /**
  * コンテキストメニューの位置を計算する
  * 画面外に出ないように調整する
@@ -16,17 +18,17 @@ export const calculateMenuPosition = (
 
   // 右端を超える場合は左側に表示
   if (x + menuWidth > windowWidth) {
-    x = windowWidth - menuWidth - 10;
+    x = windowWidth - menuWidth - SPACING.MENU_PADDING;
   }
 
   // 下端を超える場合は上側に表示
   if (y + menuHeight > windowHeight) {
-    y = windowHeight - menuHeight - 10;
+    y = windowHeight - menuHeight - SPACING.MENU_PADDING;
   }
 
   // 最小値の確保
-  x = Math.max(10, x);
-  y = Math.max(10, y);
+  x = Math.max(SPACING.MIN_POSITION, x);
+  y = Math.max(SPACING.MIN_POSITION, y);
 
   return { x, y };
 };

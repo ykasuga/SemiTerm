@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@renderer/components/ui/select';
+import { SSH_DEFAULTS } from '../../shared/constants';
 
 interface ConnectionEditorProps {
   connection: Connection | null;
@@ -29,7 +30,7 @@ const initialConnectionState: Omit<Connection, 'id' | 'createdAt' | 'updatedAt'>
   name: '',
   folderPath: '',
   host: '',
-  port: 22,
+  port: SSH_DEFAULTS.PORT,
   username: '',
   auth: { type: 'password', password: '' },
 };
