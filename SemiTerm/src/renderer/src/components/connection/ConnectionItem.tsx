@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { Server } from 'lucide-react';
 import { Connection, DropPosition } from '../../types';
@@ -18,7 +19,7 @@ interface ConnectionItemProps {
   dropPosition?: DropPosition;
 }
 
-export function ConnectionItem({
+const ConnectionItemComponent = ({
   connection,
   onConnect,
   onContextMenu,
@@ -31,7 +32,7 @@ export function ConnectionItem({
   onDrop,
   isDragging = false,
   dropPosition = null
-}: ConnectionItemProps) {
+}: ConnectionItemProps) => {
   return (
     <div className="relative">
       {dropPosition?.type === 'before' && dropPosition.targetId === connection.id && (
@@ -66,6 +67,24 @@ export function ConnectionItem({
       )}
     </div>
   );
-}
+};
+
+// メモ化されたコンポーネントをエクスポート
+export const ConnectionItem = memo(ConnectionItemComponent, (prevProps, nextProps) => {
+  // カスタム比較関数で不要な再レンダリングを防ぐ
+  return (
+    prevProps.connection.id === nextProps.connection.id &&
+    prevProps.connection.name === nextProps.connection.name &&
+    prevProps.connection.username === nextProps.connection.username &&
+    prevProps.connection.host === nextProps.connection.host &&
+    prevProps.depth === nextProps.depth &&
+    prevProps.draggable === nextProps.draggable &&
+    prevProps.isDragging === nextProps.isDragging &&
+    prevProps.dropPosition?.type === nextProps.dropPosition?.type &&
+    prevProps.dropPosition?.targetId === nextProps.dropPosition?.targetId
+  );
+});
+
+ConnectionItem.displayName = 'ConnectionItem';
 
 // Made with Bob

@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { TabStatus } from '../../types';
 
 interface StatusBarProps {
   status?: TabStatus;
 }
 
-export function StatusBar({ status }: StatusBarProps) {
+const StatusBarComponent = ({ status }: StatusBarProps) => {
   return (
     <div className="h-6 bg-[#1e293b] border-t border-gray-700 flex items-center justify-between px-4 text-xs">
       <div className="flex items-center space-x-3">
@@ -37,6 +38,22 @@ export function StatusBar({ status }: StatusBarProps) {
       <div>Log Level: debug</div>
     </div>
   );
-}
+};
+
+// メモ化されたコンポーネントをエクスポート
+export const StatusBar = memo(StatusBarComponent, (prevProps, nextProps) => {
+  // statusの比較
+  if (prevProps.status === nextProps.status) return true;
+  if (!prevProps.status || !nextProps.status) return false;
+  
+  return (
+    prevProps.status.state === nextProps.status.state &&
+    prevProps.status.username === nextProps.status.username &&
+    prevProps.status.host === nextProps.status.host &&
+    prevProps.status.errorMessage === nextProps.status.errorMessage
+  );
+});
+
+StatusBar.displayName = 'StatusBar';
 
 // Made with Bob

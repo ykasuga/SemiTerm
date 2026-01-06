@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
 import { Connection } from "./types";
 import ConnectionEditor from "./ConnectionEditor";
@@ -47,6 +47,7 @@ export default function App() {
 
   // タブ管理フック（SSH セッション開始関数は後で渡す）
   const tabManager = useTabManager((connection: Connection, tabId: string) => {
+    // この関数はsshSessionが定義された後に実際の処理を行う
     sshSession.startSshSession(connection, tabId);
   });
 
@@ -111,22 +112,112 @@ export default function App() {
     }
   });
 
-  // エディター関連のハンドラー
-  const openNewConnectionEditor = () => {
+  // エディター関連のハンドラー（メモ化）
+  const openNewConnectionEditor = useCallback(() => {
     setEditingConnection(null);
     setEditorOpen(true);
-  };
+  }, []);
 
-  const openEditConnectionEditor = (connection: Connection) => {
+  const openEditConnectionEditor = useCallback((connection: Connection) => {
     setEditingConnection(connection);
     setEditorOpen(true);
-  };
+  }, []);
 
-  const handleSaveConnection = async (connection: Connection) => {
+  const handleSaveConnection = useCallback(async (connection: Connection) => {
     await saveConnection(connection);
     setEditorOpen(false);
     setEditingConnection(null);
-  };
+  }, [saveConnection]);
+
+  // コンテキストメニューハンドラー（メモ化）
+  const handleEditConnection = useCallback(() => {
+    if (contextMenu.contextMenuState) {
+      openEditConnectionEditor(contextMenu.contextMenuState.connection);
+      contextMenu.closeContextMenu();
+    }
+  }, [contextMenu.contextMenuState, openEditConnectionEditor, contextMenu]);
+
+  const handleDeleteConnection = useCallback(() => {
+    if (contextMenu.contextMenuState) {
+      contextMenu.closeContextMenu();
+      deleteConnection(contextMenu.contextMenuState.connection.id);
+    }
+  }, [contextMenu.contextMenuState, contextMenu, deleteConnection]);
+
+  const handleAddFolder = useCallback(() => {
+    contextMenu.closeListContextMenu();
+    folderDialog.openFolderDialog();
+  }, [contextMenu, folderDialog]);
+
+  // タブコンテキストメニューハンドラー（メモ化）
+  const handleCloseTab = useCallback(() => {
+    if (contextMenu.tabContextMenuState) {
+      closeTab(contextMenu.tabContextMenuState.tabId);
+      contextMenu.closeTabContextMenu();
+    }
+  }, [contextMenu.tabContextMenuState, closeTab, contextMenu]);
+
+  const handleCloseOtherTabs = useCallback(() => {
+    if (contextMenu.tabContextMenuState) {
+      closeOtherTabs(contextMenu.tabContextMenuState.tabId);
+      contextMenu.closeTabContextMenu();
+    }
+  }, [contextMenu.tabContextMenuState, closeOtherTabs, contextMenu]);
+
+  const handleCloseTabsToRight = useCallback(() => {
+    if (contextMenu.tabContextMenuState) {
+      closeTabsToRight(contextMenu.tabContextMenuState.tabId);
+      contextMenu.closeTabContextMenu();
+    }
+  }, [contextMenu.tabContextMenuState, closeTabsToRight, contextMenu]);
+
+  const handleCloseAllTabs = useCallback(() => {
+    closeAllTabs();
+    contextMenu.closeTabContextMenu();
+  }, [closeAllTabs, contextMenu]);
+
+  // 再接続ハンドラー（メモ化）
+  const handleReconnect = useCallback((tabId: string) => {
+    const connection = tabConnections[tabId];
+    if (connection) {
+      openSshTab(connection, tabId);
+    }
+  }, [tabConnections, openSshTab]);
+
+  // タブドラッグハンドラー（メモ化）
+  const handleTabDragStart = useCallback((event: React.DragEvent<HTMLButtonElement>, tabId: string) => {
+    dragAndDrop.handleTabDragStart(event, tabId);
+  }, [dragAndDrop]);
+
+  const handleTabDragOver = useCallback((event: React.DragEvent<HTMLButtonElement>) => {
+    if (!dragAndDrop.draggingTabId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, [dragAndDrop.draggingTabId]);
+
+  const handleTabDragEnter = useCallback((tabId: string) => {
+    if (dragAndDrop.draggingTabId && dragAndDrop.draggingTabId !== tabId) {
+      dragAndDrop.setDragOverTabId(tabId);
+    }
+  }, [dragAndDrop]);
+
+  const handleTabDrop = useCallback((event: React.DragEvent<HTMLButtonElement>, tabId: string) => {
+    event.preventDefault();
+    dragAndDrop.handleTabDrop(tabId);
+  }, [dragAndDrop]);
+
+  const handleTabClose = useCallback((e: React.MouseEvent, tabId: string) => {
+    e.stopPropagation();
+    closeTab(tabId);
+  }, [closeTab]);
+
+  // タブクラス名の計算（メモ化）
+  const getTabClassName = useCallback((tabId: string) => {
+    const baseClass = "h-full shrink-0 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700";
+    const dragOverClass = dragAndDrop.dragOverTabId === tabId && dragAndDrop.draggingTabId !== tabId ? "border-blue-400" : "";
+    const draggingClass = dragAndDrop.draggingTabId === tabId ? "opacity-60" : "";
+    return `${baseClass} ${dragOverClass} ${draggingClass}`;
+  }, [dragAndDrop.dragOverTabId, dragAndDrop.draggingTabId]);
 
   return (
     <div className="flex w-screen h-screen bg-[#0f172a] text-white">
@@ -166,34 +257,18 @@ export default function App() {
                   key={tab.id}
                   value={tab.id}
                   draggable
-                  onDragStart={(event) => dragAndDrop.handleTabDragStart(event, tab.id)}
-                  onDragOver={(event) => {
-                    if (!dragAndDrop.draggingTabId) return;
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                  }}
-                  onDragEnter={() => {
-                    if (dragAndDrop.draggingTabId && dragAndDrop.draggingTabId !== tab.id) {
-                      dragAndDrop.setDragOverTabId(tab.id);
-                    }
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    dragAndDrop.handleTabDrop(tab.id);
-                  }}
+                  onDragStart={(event) => handleTabDragStart(event, tab.id)}
+                  onDragOver={handleTabDragOver}
+                  onDragEnter={() => handleTabDragEnter(tab.id)}
+                  onDrop={(event) => handleTabDrop(event, tab.id)}
                   onDragEnd={dragAndDrop.resetTabDragState}
-                  className={`h-full shrink-0 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700 ${
-                    dragAndDrop.dragOverTabId === tab.id && dragAndDrop.draggingTabId !== tab.id ? "border-blue-400" : ""
-                  } ${dragAndDrop.draggingTabId === tab.id ? "opacity-60" : ""}`}
+                  className={getTabClassName(tab.id)}
                   onContextMenu={(event) => contextMenu.handleTabContextMenu(event, tab.id)}
                 >
                   <span className="mr-2">{tab.label}</span>
                   <button
                     className="flex items-center justify-center w-4 h-4 rounded-full hover:bg-gray-600"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeTab(tab.id);
-                    }}
+                    onClick={(e) => handleTabClose(e, tab.id)}
                     aria-label="タブを閉じる"
                   >
                     <span className="text-xs">×</span>
@@ -225,12 +300,7 @@ export default function App() {
                   <ErrorScreen
                     errorMessage={tabStatuses[tab.id]?.errorMessage || '接続に失敗しました。'}
                     onClose={() => closeTab(tab.id)}
-                    onReconnect={() => {
-                      const connection = tabConnections[tab.id];
-                      if (connection) {
-                        openSshTab(connection, tab.id);
-                      }
-                    }}
+                    onReconnect={() => handleReconnect(tab.id)}
                   />
                 ) : (
                   <TerminalComponent
@@ -254,14 +324,8 @@ export default function App() {
           connection={contextMenu.contextMenuState.connection}
           position={{ x: contextMenu.contextMenuState.x, y: contextMenu.contextMenuState.y }}
           menuRef={contextMenu.contextMenuRef}
-          onEdit={() => {
-            openEditConnectionEditor(contextMenu.contextMenuState!.connection);
-            contextMenu.closeContextMenu();
-          }}
-          onDelete={() => {
-            contextMenu.closeContextMenu();
-            deleteConnection(contextMenu.contextMenuState!.connection.id);
-          }}
+          onEdit={handleEditConnection}
+          onDelete={handleDeleteConnection}
         />
       )}
 
@@ -269,10 +333,7 @@ export default function App() {
         <ListContextMenu
           position={{ x: contextMenu.listContextMenuState.x, y: contextMenu.listContextMenuState.y }}
           menuRef={contextMenu.listContextMenuRef}
-          onAddFolder={() => {
-            contextMenu.closeListContextMenu();
-            folderDialog.openFolderDialog();
-          }}
+          onAddFolder={handleAddFolder}
         />
       )}
 
@@ -282,22 +343,10 @@ export default function App() {
           position={{ x: contextMenu.tabContextMenuState.x, y: contextMenu.tabContextMenuState.y }}
           tabs={tabs}
           menuRef={contextMenu.tabContextMenuRef}
-          onCloseTab={() => {
-            closeTab(contextMenu.tabContextMenuState!.tabId);
-            contextMenu.closeTabContextMenu();
-          }}
-          onCloseOthers={() => {
-            closeOtherTabs(contextMenu.tabContextMenuState!.tabId);
-            contextMenu.closeTabContextMenu();
-          }}
-          onCloseToRight={() => {
-            closeTabsToRight(contextMenu.tabContextMenuState!.tabId);
-            contextMenu.closeTabContextMenu();
-          }}
-          onCloseAll={() => {
-            closeAllTabs();
-            contextMenu.closeTabContextMenu();
-          }}
+          onCloseTab={handleCloseTab}
+          onCloseOthers={handleCloseOtherTabs}
+          onCloseToRight={handleCloseTabsToRight}
+          onCloseAll={handleCloseAllTabs}
         />
       )}
 

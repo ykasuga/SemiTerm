@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Button } from '../ui/button';
 
 interface ErrorScreenProps {
@@ -6,7 +7,7 @@ interface ErrorScreenProps {
   onReconnect: () => void;
 }
 
-export function ErrorScreen({ errorMessage, onClose, onReconnect }: ErrorScreenProps) {
+const ErrorScreenComponent = ({ errorMessage, onClose, onReconnect }: ErrorScreenProps) => {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
       <div className="text-red-400 text-2xl">⚠ 接続エラー</div>
@@ -17,6 +18,13 @@ export function ErrorScreen({ errorMessage, onClose, onReconnect }: ErrorScreenP
       </div>
     </div>
   );
-}
+};
+
+// メモ化されたコンポーネントをエクスポート
+export const ErrorScreen = memo(ErrorScreenComponent, (prevProps, nextProps) => {
+  return prevProps.errorMessage === nextProps.errorMessage;
+});
+
+ErrorScreen.displayName = 'ErrorScreen';
 
 // Made with Bob

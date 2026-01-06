@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { Button } from '../ui/button';
 
 interface WelcomeScreenProps {
   onNewConnection: () => void;
 }
 
-export function WelcomeScreen({ onNewConnection }: WelcomeScreenProps) {
+const WelcomeScreenComponent = ({ onNewConnection }: WelcomeScreenProps) => {
   return (
     <div className="flex flex-col items-center justify-center h-full text-gray-300">
       <div className="text-5xl mb-4">{'>'}_</div>
@@ -12,6 +13,11 @@ export function WelcomeScreen({ onNewConnection }: WelcomeScreenProps) {
       <Button onClick={onNewConnection}>新しい接続を作成</Button>
     </div>
   );
-}
+};
+
+// メモ化されたコンポーネントをエクスポート（propsが変わらない限り再レンダリングしない）
+export const WelcomeScreen = memo(WelcomeScreenComponent);
+
+WelcomeScreen.displayName = 'WelcomeScreen';
 
 // Made with Bob

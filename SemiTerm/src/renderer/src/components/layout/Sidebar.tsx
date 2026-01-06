@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -31,7 +32,7 @@ interface SidebarProps {
   onStructureDragEnd: () => void;
 }
 
-export function Sidebar({
+const SidebarComponent = ({
   connectionTree,
   expandedFolders,
   draggingItem,
@@ -53,7 +54,7 @@ export function Sidebar({
   onRootDragOver,
   onRootDrop,
   onStructureDragEnd
-}: SidebarProps) {
+}: SidebarProps) => {
   return (
     <div className="w-64 bg-[#1e293b] border-r border-gray-700 p-4 flex flex-col">
       <div className="flex items-center space-x-3 mb-6">
@@ -125,6 +126,49 @@ export function Sidebar({
       <div className="text-xs text-gray-500 mt-4">SemiTerm v0.1.0</div>
     </div>
   );
-}
+};
+
+// メモ化されたコンポーネントをエクスポート
+export const Sidebar = memo(SidebarComponent, (prevProps, nextProps) => {
+  // カスタム比較関数で不要な再レンダリングを防ぐ
+  
+  // draggingItemの比較
+  const draggingItemEqual = (() => {
+    if (prevProps.draggingItem === nextProps.draggingItem) return true;
+    if (!prevProps.draggingItem || !nextProps.draggingItem) return false;
+    if (prevProps.draggingItem.type !== nextProps.draggingItem.type) return false;
+    
+    if (prevProps.draggingItem.type === 'connection' && nextProps.draggingItem.type === 'connection') {
+      return prevProps.draggingItem.id === nextProps.draggingItem.id;
+    }
+    if (prevProps.draggingItem.type === 'folder' && nextProps.draggingItem.type === 'folder') {
+      return prevProps.draggingItem.path === nextProps.draggingItem.path;
+    }
+    return false;
+  })();
+  
+  // connectionTreeの比較（参照が変わっていなければ同じとみなす）
+  const connectionTreeEqual = prevProps.connectionTree === nextProps.connectionTree;
+  
+  // expandedFoldersの比較（浅い比較）
+  const expandedFoldersEqual = (() => {
+    const prevKeys = Object.keys(prevProps.expandedFolders);
+    const nextKeys = Object.keys(nextProps.expandedFolders);
+    if (prevKeys.length !== nextKeys.length) return false;
+    return prevKeys.every(key => prevProps.expandedFolders[key] === nextProps.expandedFolders[key]);
+  })();
+  
+  return (
+    connectionTreeEqual &&
+    expandedFoldersEqual &&
+    draggingItemEqual &&
+    prevProps.dropTargetFolder === nextProps.dropTargetFolder &&
+    prevProps.isRootDropTarget === nextProps.isRootDropTarget &&
+    prevProps.dropPosition?.type === nextProps.dropPosition?.type &&
+    prevProps.dropPosition?.targetId === nextProps.dropPosition?.targetId
+  );
+});
+
+Sidebar.displayName = 'Sidebar';
 
 // Made with Bob

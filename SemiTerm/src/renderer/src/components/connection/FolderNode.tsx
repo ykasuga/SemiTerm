@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { ChevronRight, Folder, FolderOpen } from 'lucide-react';
 import { Connection, DragItem, DropPosition } from '../../types';
@@ -26,7 +27,7 @@ interface FolderNodeProps {
   onStructureDragEnd: () => void;
 }
 
-export function FolderNode({
+const FolderNodeComponent = ({
   node,
   depth,
   isExpanded,
@@ -45,7 +46,7 @@ export function FolderNode({
   onConnectionDragLeave,
   onConnectionDrop,
   onStructureDragEnd
-}: FolderNodeProps) {
+}: FolderNodeProps) => {
   // 無効なドロップターゲットかどうかを判定
   const isInvalidDropTarget = draggingItem?.type === "folder" &&
     (node.path === draggingItem.path || node.path.startsWith(`${draggingItem.path}/`));
@@ -144,6 +145,41 @@ export function FolderNode({
       )}
     </div>
   );
-}
+};
+
+// メモ化されたコンポーネントをエクスポート
+export const FolderNode = memo(FolderNodeComponent, (prevProps, nextProps) => {
+  // カスタム比較関数で不要な再レンダリングを防ぐ
+  
+  // draggingItemの比較
+  const draggingItemEqual = (() => {
+    if (prevProps.draggingItem === nextProps.draggingItem) return true;
+    if (!prevProps.draggingItem || !nextProps.draggingItem) return false;
+    if (prevProps.draggingItem.type !== nextProps.draggingItem.type) return false;
+    
+    if (prevProps.draggingItem.type === 'connection' && nextProps.draggingItem.type === 'connection') {
+      return prevProps.draggingItem.id === nextProps.draggingItem.id;
+    }
+    if (prevProps.draggingItem.type === 'folder' && nextProps.draggingItem.type === 'folder') {
+      return prevProps.draggingItem.path === nextProps.draggingItem.path;
+    }
+    return false;
+  })();
+  
+  return (
+    prevProps.node.path === nextProps.node.path &&
+    prevProps.node.name === nextProps.node.name &&
+    prevProps.node.connections.length === nextProps.node.connections.length &&
+    prevProps.node.children.length === nextProps.node.children.length &&
+    prevProps.depth === nextProps.depth &&
+    prevProps.isExpanded === nextProps.isExpanded &&
+    draggingItemEqual &&
+    prevProps.dropTargetFolder === nextProps.dropTargetFolder &&
+    prevProps.dropPosition?.type === nextProps.dropPosition?.type &&
+    prevProps.dropPosition?.targetId === nextProps.dropPosition?.targetId
+  );
+});
+
+FolderNode.displayName = 'FolderNode';
 
 // Made with Bob

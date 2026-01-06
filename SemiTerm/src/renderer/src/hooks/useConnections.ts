@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Connection, ConnectionStoreState, FolderInfo } from '../types';
 import { buildConnectionTree, ConnectionFolderNode } from '../utils/connectionTreeUtils';
 import { unwrapResponse, getUserFriendlyMessage, logError } from '../utils/errorUtils';
@@ -43,8 +43,10 @@ export const useConnections = (): UseConnectionsReturn => {
       });
   }, [applyConnectionState]);
 
-  // 接続ツリーの構築
-  const connectionTree = buildConnectionTree(connections, folders, folderInfos);
+  // 接続ツリーの構築（メモ化）
+  const connectionTree = useMemo(() => {
+    return buildConnectionTree(connections, folders, folderInfos);
+  }, [connections, folders, folderInfos]);
 
   // 接続をフォルダに移動
   const moveConnectionToFolder = useCallback(async (connectionId: string, targetFolderPath?: string) => {
