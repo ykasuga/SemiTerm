@@ -399,24 +399,28 @@ export function useArboristTree({
 
 ## 4. 段階的移行手順
 
-### フェーズ1: 準備（1日目）
+### フェーズ1: 準備（1日目）✅ 完了
 
 #### ステップ1.1: ライブラリのインストール
 ```bash
 cd SemiTerm
 npm install react-arborist
-npm install --save-dev @types/react-arborist
+# Note: @types/react-arborist is not needed (types included in the package)
 ```
 
 #### ステップ1.2: 型定義の追加
-- [ ] `types.ts`に`ArboristNodeData`型を追加
-- [ ] 既存の型定義との互換性を確認
+- [x] `types.ts`に`ArboristNodeData`型を追加
+- [x] 既存の型定義との互換性を確認
 
 #### ステップ1.3: ユーティリティ関数の作成
-- [ ] `utils/arboristDataConverter.ts`を作成
-- [ ] `convertToArboristData`関数を実装
-- [ ] `flattenArboristData`関数を実装
+- [x] `utils/arboristDataConverter.ts`を作成
+- [x] `convertToArboristData`関数を実装
+- [x] `flattenArboristData`関数を実装
+- [x] `buildArboristTreeData`関数を実装（追加）
 - [ ] ユニットテストを作成（オプション）
+
+**完了日**: 2026-01-06
+**コミット**: 095d3f9
 
 ### フェーズ2: コンポーネント実装（1日目〜2日目）
 
