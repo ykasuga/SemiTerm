@@ -339,9 +339,9 @@ SemiTerm/src/
   - [x] イベント最適化
 
 ### フェーズ3: 仕上げ（優先度: 低）
-- [ ] コンポーネント細分化
-  - [ ] 大きなコンポーネント分割
-  - [ ] 共通コンポーネント抽出
+- [x] コンポーネント細分化 ✅ 2026-01-06完了
+  - [x] 大きなコンポーネント分割
+  - [x] 共通コンポーネント抽出
 
 ---
 
@@ -489,4 +489,72 @@ SemiTerm/src/
    - ドラッグ&ドロップ操作の滑らかさ向上
    - タブ切り替えの応答性向上
 
-**最終更新**: 2025-12-28 22:03 JST
+**最終更新**: 2026-01-06 16:40 JST
+
+---
+
+### 2026-01-06: コンポーネント細分化完了
+**実装内容**:
+- TabBarコンポーネントの抽出（`SemiTerm/src/renderer/src/components/layout/TabBar.tsx`）
+  - タブバーのUI表示とドラッグ&ドロップロジックを分離
+  - React.memoによる最適化
+  - 82行の独立したコンポーネント
+- TabContentAreaコンポーネントの抽出（`SemiTerm/src/renderer/src/components/layout/TabContentArea.tsx`）
+  - タブコンテンツの表示ロジックを分離
+  - Welcome/Error/Terminalの条件分岐を集約
+  - React.memoによる最適化
+  - 82行の独立したコンポーネント
+- ConnectionEditorのフォーム細分化
+  - ConnectionInfoFieldsコンポーネント（`SemiTerm/src/renderer/src/components/forms/ConnectionInfoFields.tsx`）
+    - 基本接続情報フィールドを抽出
+    - 82行の再利用可能なコンポーネント
+  - AuthenticationFieldsコンポーネント（`SemiTerm/src/renderer/src/components/forms/AuthenticationFields.tsx`）
+    - 認証方式フィールドを抽出
+    - パスワード/秘密鍵の切り替えロジックを集約
+    - 87行の再利用可能なコンポーネント
+- 共通UIコンポーネントの抽出
+  - CloseButtonコンポーネント（`SemiTerm/src/renderer/src/components/ui/CloseButton.tsx`）
+    - 閉じるボタンの共通化
+    - 24行の小さな再利用可能なコンポーネント
+- App.tsxのリファクタリング
+  - 385行から約270行に削減（約30%削減）
+  - タブバーとコンテンツエリアのロジックを分離
+  - イベントハンドラーのメモ化を維持
+
+**成果**:
+- TypeScriptコンパイル成功
+- ビルド成功（エラーなし）
+- App.tsxの行数削減（385行 → 約270行）
+- ConnectionEditorの行数削減（188行 → 約120行）
+- 5つの新しい再利用可能なコンポーネントを作成
+- コンポーネントの責任分離の明確化
+- テスタビリティの向上
+- 保守性の向上
+
+**コンポーネント構成の改善**:
+1. **レイアウトコンポーネント**
+   - TabBar: タブバーの表示とドラッグ&ドロップ
+   - TabContentArea: タブコンテンツの表示切り替え
+   - Sidebar: サイドバー（既存）
+   - StatusBar: ステータスバー（既存）
+
+2. **フォームコンポーネント**
+   - ConnectionInfoFields: 接続情報入力フィールド
+   - AuthenticationFields: 認証情報入力フィールド
+
+3. **共通UIコンポーネント**
+   - CloseButton: 閉じるボタン
+   - その他のshadcn/uiコンポーネント（既存）
+
+**最適化の詳細**:
+- 全ての新規コンポーネントにReact.memoを適用
+- カスタム比較関数による精密な再レンダリング制御
+- イベントハンドラーのuseCallbackによるメモ化
+- プロップスの最小化による依存関係の削減
+
+**期待される効果**:
+- コンポーネントの再利用性向上
+- テストの書きやすさ向上
+- 新機能追加の容易性向上
+- バグ修正の影響範囲の明確化
+- コードレビューの効率化

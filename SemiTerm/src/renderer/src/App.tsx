@@ -1,8 +1,7 @@
 import { useState, useCallback } from "react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@renderer/components/ui/tabs";
+import { Tabs } from "@renderer/components/ui/tabs";
 import { Connection } from "./types";
 import ConnectionEditor from "./ConnectionEditor";
-import TerminalComponent from "./Terminal";
 
 // カスタムフックのインポート
 import { useConnections } from "./hooks/useConnections";
@@ -17,8 +16,8 @@ import { usePasswordPrompt } from "./hooks/usePasswordPrompt";
 // コンポーネントのインポート
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
-import { WelcomeScreen } from "./components/screens/WelcomeScreen";
-import { ErrorScreen } from "./components/screens/ErrorScreen";
+import { TabBar } from "./components/layout/TabBar";
+import { TabContentArea } from "./components/layout/TabContentArea";
 import { ConnectionContextMenu } from "./components/menus/ConnectionContextMenu";
 import { TabContextMenu } from "./components/menus/TabContextMenu";
 import { ListContextMenu } from "./components/menus/ListContextMenu";
@@ -211,14 +210,6 @@ export default function App() {
     closeTab(tabId);
   }, [closeTab]);
 
-  // タブクラス名の計算（メモ化）
-  const getTabClassName = useCallback((tabId: string) => {
-    const baseClass = "h-full shrink-0 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-gray-700";
-    const dragOverClass = dragAndDrop.dragOverTabId === tabId && dragAndDrop.draggingTabId !== tabId ? "border-blue-400" : "";
-    const draggingClass = dragAndDrop.draggingTabId === tabId ? "opacity-60" : "";
-    return `${baseClass} ${dragOverClass} ${draggingClass}`;
-  }, [dragAndDrop.dragOverTabId, dragAndDrop.draggingTabId]);
-
   return (
     <div className="flex w-screen h-screen bg-[#0f172a] text-white">
       {/* Sidebar */}
@@ -249,70 +240,30 @@ export default function App() {
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
         {/* Tab Bar */}
-        <div className="h-12 bg-[#1e293b] border-b border-gray-700 flex items-center px-4 overflow-hidden">
-          <div className="w-full h-full overflow-x-auto overflow-y-hidden scrollable-tabs">
-            <TabsList className="bg-transparent h-full p-0 flex-nowrap w-max">
-              {tabs.map((tab) => (
-                <TabsTrigger
-                  key={tab.id}
-                  value={tab.id}
-                  draggable
-                  onDragStart={(event) => handleTabDragStart(event, tab.id)}
-                  onDragOver={handleTabDragOver}
-                  onDragEnter={() => handleTabDragEnter(tab.id)}
-                  onDrop={(event) => handleTabDrop(event, tab.id)}
-                  onDragEnd={dragAndDrop.resetTabDragState}
-                  className={getTabClassName(tab.id)}
-                  onContextMenu={(event) => contextMenu.handleTabContextMenu(event, tab.id)}
-                >
-                  <span className="mr-2">{tab.label}</span>
-                  <button
-                    className="flex items-center justify-center w-4 h-4 rounded-full hover:bg-gray-600"
-                    onClick={(e) => handleTabClose(e, tab.id)}
-                    aria-label="タブを閉じる"
-                  >
-                    <span className="text-xs">×</span>
-                  </button>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-        </div>
+        <TabBar
+          tabs={tabs}
+          activeTab={activeTab}
+          draggingTabId={dragAndDrop.draggingTabId}
+          dragOverTabId={dragAndDrop.dragOverTabId}
+          onTabDragStart={handleTabDragStart}
+          onTabDragOver={handleTabDragOver}
+          onTabDragEnter={handleTabDragEnter}
+          onTabDrop={handleTabDrop}
+          onTabDragEnd={dragAndDrop.resetTabDragState}
+          onTabClose={handleTabClose}
+          onTabContextMenu={contextMenu.handleTabContextMenu}
+        />
 
         {/* Tab Content */}
-        <div className="flex-1 bg-[#0f172a] overflow-y-hidden relative">
-          {tabs.map((tab) => (
-            <TabsContent
-              key={tab.id}
-              value={tab.id}
-              forceMount
-              className="h-full p-0 m-0"
-              style={{ display: 'block' }}
-            >
-              <div
-                className={`absolute inset-0 transition-opacity duration-150 ${
-                  activeTab === tab.id ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                }`}
-              >
-                {tab.id === "welcome" ? (
-                  <WelcomeScreen onNewConnection={openNewConnectionEditor} />
-                ) : tabStatuses[tab.id]?.state === "error" ? (
-                  <ErrorScreen
-                    errorMessage={tabStatuses[tab.id]?.errorMessage || '接続に失敗しました。'}
-                    onClose={() => closeTab(tab.id)}
-                    onReconnect={() => handleReconnect(tab.id)}
-                  />
-                ) : (
-                  <TerminalComponent
-                    connectionId={tab.id}
-                    isActive={activeTab === tab.id}
-                    resetToken={tabSessionTokens[tab.id] ?? 0}
-                  />
-                )}
-              </div>
-            </TabsContent>
-          ))}
-        </div>
+        <TabContentArea
+          tabs={tabs}
+          activeTab={activeTab}
+          tabStatuses={tabStatuses}
+          tabSessionTokens={tabSessionTokens}
+          onNewConnection={openNewConnectionEditor}
+          onCloseTab={closeTab}
+          onReconnect={handleReconnect}
+        />
 
         {/* Status Bar */}
         <StatusBar status={tabStatuses[activeTab]} />

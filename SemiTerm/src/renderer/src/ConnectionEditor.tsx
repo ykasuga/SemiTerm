@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Connection } from './types';
 import { Button } from '@renderer/components/ui/button';
 import {
@@ -9,15 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
-import { Input } from '@renderer/components/ui/input';
-import { Label } from '@renderer/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@renderer/components/ui/select';
+import { ConnectionInfoFields } from './components/forms/ConnectionInfoFields';
+import { AuthenticationFields } from './components/forms/AuthenticationFields';
 import { SSH_DEFAULTS } from '../../shared/constants';
 
 interface ConnectionEditorProps {
@@ -61,26 +54,26 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
     setIsValid(!!(name && host && username && isAuthValid));
   }, [formData]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: name === 'port' ? parseInt(value) || 0 : value }));
-  };
+  }, []);
 
-  const handleAuthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAuthChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, auth: { ...prev.auth, [name]: value } }));
-  };
+  }, []);
   
-  const handleAuthTypeChange = (value: 'password' | 'key') => {
+  const handleAuthTypeChange = useCallback((value: 'password' | 'key') => {
     setFormData(prev => ({
       ...prev,
       auth: value === 'password'
         ? { type: 'password', password: prev.auth.type === 'password' ? prev.auth.password : '' }
         : { type: 'key', keyPath: prev.auth.type === 'key' ? prev.auth.keyPath : '' }
     }));
-  };
+  }, []);
 
-  const handleBrowseKeyFile = async () => {
+  const handleBrowseKeyFile = useCallback(async () => {
     const response = await window.api.openKeyFileDialog();
     if (response && response.success && response.data) {
       setFormData(prev => ({
@@ -88,7 +81,7 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
         auth: { type: 'key', keyPath: response.data as string }
       }));
     }
-  };
+  }, []);
 
   const handleSave = () => {
     onSave({
@@ -110,66 +103,23 @@ export default function ConnectionEditor({ connection, onSave, onCancel }: Conne
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid w-full items-center gap-1.5">
-            <Label htmlFor="name">接続名</Label>
-            <Input id="name" name="name" value={formData.name} onChange={handleChange} className="bg-gray-800 border-gray-600" />
-          </div>
-          <div className="grid w-full items-center gap-1.5">
-            <Label htmlFor="folderPath">フォルダ (例: Production/DB)</Label>
-            <Input id="folderPath" name="folderPath" placeholder="任意" value={formData.folderPath || ''} onChange={handleChange} className="bg-gray-800 border-gray-600" />
-          </div>
-          <div className="grid w-full items-center gap-1.5">
-            <Label htmlFor="host">Host</Label>
-            <Input id="host" name="host" value={formData.host} onChange={handleChange} className="bg-gray-800 border-gray-600" />
-          </div>
-          <div className="grid w-full items-center gap-1.5">
-            <Label htmlFor="port">Port</Label>
-            <Input id="port" name="port" type="number" value={formData.port} onChange={handleChange} className="bg-gray-800 border-gray-600" />
-          </div>
-          <div className="grid w-full items-center gap-1.5">
-            <Label htmlFor="username">Username</Label>
-            <Input id="username" name="username" value={formData.username} onChange={handleChange} className="bg-gray-800 border-gray-600" />
-          </div>
-          <div className="grid w-full items-center gap-1.5">
-            <Label>認証方式</Label>
-            <Select onValueChange={handleAuthTypeChange} value={formData.auth.type}>
-              <SelectTrigger className="bg-gray-800 border-gray-600">
-                <SelectValue placeholder="認証方式を選択" />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-800 text-white border-gray-600">
-                <SelectItem value="password">パスワード</SelectItem>
-                <SelectItem value="key">秘密鍵</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {formData.auth.type === 'password' ? (
-            <div className="grid w-full items-center gap-1.5">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" name="password" type="password" value={formData.auth.password || ''} onChange={handleAuthChange} className="bg-gray-800 border-gray-600" />
-            </div>
-          ) : (
-            <div className="grid w-full items-center gap-1.5">
-              <Label htmlFor="keyPath">Key Path</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="keyPath"
-                  name="keyPath"
-                  value={formData.auth.keyPath || ''}
-                  onChange={handleAuthChange}
-                  className="bg-gray-800 border-gray-600"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-white text-white hover:bg-white/10"
-                  onClick={handleBrowseKeyFile}
-                >
-                  参照
-                </Button>
-              </div>
-            </div>
-          )}
-           <p className="text-xs text-gray-500 pt-2">パスワードは保存されません（毎回入力が必要です）。</p>
+          <ConnectionInfoFields
+            name={formData.name}
+            folderPath={formData.folderPath || ''}
+            host={formData.host}
+            port={formData.port}
+            username={formData.username}
+            onChange={handleChange}
+          />
+          <AuthenticationFields
+            authType={formData.auth.type}
+            password={formData.auth.type === 'password' ? formData.auth.password || '' : ''}
+            keyPath={formData.auth.type === 'key' ? formData.auth.keyPath || '' : ''}
+            onAuthTypeChange={handleAuthTypeChange}
+            onPasswordChange={handleAuthChange}
+            onKeyPathChange={handleAuthChange}
+            onBrowseKeyFile={handleBrowseKeyFile}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" className="border-white text-white hover:bg-white/10" onClick={onCancel}>Cancel</Button>
