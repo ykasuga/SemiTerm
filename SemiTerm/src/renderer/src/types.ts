@@ -83,3 +83,20 @@ export interface ConnectionFolderNode {
   children: ConnectionFolderNode[];
   connections: Connection[];
 }
+
+// react-arborist用のデータ構造
+export interface ArboristNodeData {
+  id: string;
+  name: string;
+  type: 'folder' | 'connection';
+  
+  // フォルダの場合
+  path?: string;
+  
+  // コネクションの場合
+  connection?: Connection;
+  
+  // 共通
+  order?: number;
+  children?: ArboristNodeData[];
+}
