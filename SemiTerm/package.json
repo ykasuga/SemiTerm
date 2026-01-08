@@ -1,6 +1,6 @@
 {
   "name": "semiterm",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "A lightweight SSH terminal application.",
   "main": "./out/main/index.js",
   "author": "Gemini",
@@ -13,6 +13,54 @@
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
     "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "build": {
+    "appId": "com.semiterm.app",
+    "productName": "SemiTerm",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/",
+        "to": "resources/",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "resources/icon.png",
+      "sign": null
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "resources/icon.png",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "resources/icon.png",
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "dependencies": {
     "@electron-toolkit/preload": "^1.0.3",
