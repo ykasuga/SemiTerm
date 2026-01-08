@@ -1,5 +1,15 @@
 # SemiTerm
 
+## How to run dev mode
+
+```sh
 npm run build
 npm run dev
-ssh root@localhost -p 2222
+```
+
+## How to build
+
+```sh
+npm run build:win
+npm run build:mac
+```
